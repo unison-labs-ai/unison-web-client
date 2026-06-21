@@ -5,6 +5,7 @@ type InlineSpan = {
 	code?: boolean;
 	href?: string;
 	italic?: boolean;
+	math?: boolean;
 	text: string;
 };
 
@@ -13,6 +14,7 @@ const INLINE_PATTERNS: { make: (match: RegExpMatchArray) => InlineSpan; re: RegE
 	{ make: (m) => ({ bold: true, text: m[1] ?? "" }), re: /^\*\*([^*]+)\*\*/ },
 	{ make: (m) => ({ bold: true, text: m[1] ?? "" }), re: /^__([^_]+)__/ },
 	{ make: (m) => ({ code: true, text: m[1] ?? "" }), re: /^`([^`]+)`/ },
+	{ make: (m) => ({ math: true, text: m[1] ?? "" }), re: /^\$(?!\$)(\S(?:[^$\n]*?\S)?)\$(?!\$)/ },
 	{ make: (m) => ({ italic: true, text: m[1] ?? "" }), re: /^\*([^*\n]+)\*/ },
 	{ make: (m) => ({ italic: true, text: m[1] ?? "" }), re: /^_([^_\n]+)_/ },
 ];
@@ -33,7 +35,7 @@ function parseInline(input: string): InlineSpan[] {
 	while (index < input.length) {
 		const char = input[index];
 
-		if (char === "*" || char === "_" || char === "`" || char === "[") {
+		if (char === "*" || char === "_" || char === "`" || char === "[" || char === "$") {
 			const rest = input.slice(index);
 			let matched = false;
 
@@ -182,6 +184,7 @@ function InlineText({ text }: { text: string }) {
 			span.code
 				? "rounded-sm bg-surface-muted px-1 py-[1px] font-mono text-[0.92em] text-ink-muted"
 				: null,
+			span.math ? "font-mono text-[0.95em] text-ink" : null,
 			span.href ? "text-sky-foreground underline underline-offset-2" : null,
 		]
 			.filter(Boolean)

@@ -95,21 +95,26 @@ function Field({ label, lines, value }: { label: string; lines?: number; value: 
 
 function StatusBadge({ tool }: { tool: ToolPart }) {
 	const failed = tool.status === "error";
+	const pending = tool.status === "pending";
 
 	return (
 		<span
 			style={{
 				alignSelf: "flex-start",
-				background: failed ? "var(--danger-soft)" : "var(--positive-soft)",
+				background: failed
+					? "var(--danger-soft)"
+					: pending
+						? "var(--warning-soft)"
+						: "var(--positive-soft)",
 				borderRadius: "var(--radius-pill)",
-				color: failed ? "var(--danger)" : "var(--positive)",
+				color: failed ? "var(--danger)" : pending ? "var(--warning)" : "var(--positive)",
 				fontSize: "11px",
 				fontWeight: 500,
 				padding: "2px 8px",
 				textTransform: "uppercase",
 			}}
 		>
-			{failed ? "Failed" : "Completed"}
+			{failed ? "Failed" : pending ? "Pending approval" : "Completed"}
 		</span>
 	);
 }

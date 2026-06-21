@@ -7,6 +7,7 @@ import {
 	buildTranscriptTurns,
 	mergeThreadMessages,
 	shouldShowActivitySummary,
+	summarizeToolResult,
 } from "./session-transcript";
 import type { StreamEventRecord } from "./stream-events";
 
@@ -247,6 +248,46 @@ describe("session transcript folding", () => {
 		expect(shouldShowActivitySummary(turn)).toBe(true);
 	});
 
+	it("renders approval-gated tools as pending instead of failed", () => {
+		const turns = buildTranscriptTurns(
+			[message({ content: "Do it.", id: USER_MESSAGE_ID, messageSeq: 1, role: "user" })],
+			[
+				record({
+					index: 0,
+					input: { title: "Budget reminder" },
+					sessionId: SESSION_ID,
+					toolCallId: TOOL_CALL_ID,
+					toolName: "reminder.create",
+					turnId: TURN_ID,
+					type: "tool.started",
+				}),
+				record({
+					index: 1,
+					output: {
+						code: "needs_approval",
+						error: "reminder.create is configured to ask for approval before execution.",
+						retryable: true,
+					},
+					sessionId: SESSION_ID,
+					status: "failed",
+					toolCallId: TOOL_CALL_ID,
+					toolName: "reminder.create",
+					turnId: TURN_ID,
+					type: "tool.completed",
+				}),
+			],
+		);
+		const tool = firstTurn(turns).parts.find((part) => part.kind === "tool");
+
+		expect(tool).toMatchObject({
+			kind: "tool",
+			tool: { status: "pending", tool: "reminder.create" },
+		});
+		expect(tool?.kind === "tool" ? summarizeToolResult(tool.tool) : undefined).toBe(
+			"Pending approval",
+		);
+	});
+
 	it("ends activity on every terminal status, including failed", () => {
 		const turns = buildTranscriptTurns(
 			[message({ content: "Do it.", id: USER_MESSAGE_ID, messageSeq: 1, role: "user" })],
@@ -342,5 +383,44 @@ describe("session transcript folding", () => {
 		const merged = mergeThreadMessages([placeholder, user], [completed]);
 		expect(merged.map((entry) => entry.id)).toEqual([USER_MESSAGE_ID, ASSISTANT_MESSAGE_ID]);
 		expect(merged[1]?.content).toBe("Hello!");
+	});
+
+	it("merges snapshots without dropping a locally accepted newer turn", () => {
+		const user = message({ content: "Hi", id: USER_MESSAGE_ID, messageSeq: 1, role: "user" });
+		const assistant = message({
+			content: "Hello!",
+			id: ASSISTANT_MESSAGE_ID,
+			messageSeq: 2,
+			role: "assistant",
+			status: "complete",
+		});
+		const queuedUser = message({
+			content: "Follow up",
+			id: "00000000-0000-4000-8000-000000000007",
+			messageSeq: 3,
+			role: "user",
+			turnId: "00000000-0000-4000-8000-000000000009",
+		});
+		const queuedAssistant = message({
+			content: "",
+			id: "00000000-0000-4000-8000-000000000008",
+			messageSeq: 4,
+			role: "assistant",
+			sessionId: "00000000-0000-4000-8000-000000000010",
+			status: "streaming",
+			turnId: "00000000-0000-4000-8000-000000000009",
+		});
+
+		const merged = mergeThreadMessages(
+			[user, assistant, queuedUser, queuedAssistant],
+			[user, assistant],
+		);
+
+		expect(merged.map((entry) => entry.id)).toEqual([
+			USER_MESSAGE_ID,
+			ASSISTANT_MESSAGE_ID,
+			"00000000-0000-4000-8000-000000000007",
+			"00000000-0000-4000-8000-000000000008",
+		]);
 	});
 });

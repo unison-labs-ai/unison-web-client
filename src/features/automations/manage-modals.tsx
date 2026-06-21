@@ -779,12 +779,9 @@ function ToolRow({
 	override: AgentToolPermissionDecision | null;
 	tool: ToolsetTool;
 }) {
-	const lockText =
-		tool.floor === "fixed"
-			? "Fixed — security floor"
-			: tool.floor === "approval"
-				? "Floor: approval required"
-				: null;
+	const approvalOptions = tool.canAlwaysAllow
+		? APPROVAL_OPTIONS
+		: APPROVAL_OPTIONS.filter((option) => option.value !== "always_allow");
 
 	return (
 		<div
@@ -815,8 +812,8 @@ function ToolRow({
 				) : null}
 			</div>
 
-			{lockText ? (
-				<span title={lockText}>
+			{tool.isFixed ? (
+				<span title="Fixed tool">
 					<Lock size={12} style={{ color: "var(--ink-subtle)", flexShrink: 0 }} />
 				</span>
 			) : (
@@ -843,7 +840,7 @@ function ToolRow({
 						>
 							Approval mode
 						</p>
-						{APPROVAL_OPTIONS.map((option) => (
+						{approvalOptions.map((option) => (
 							<DropdownMenuItem key={option.label} onSelect={() => onSetOverride(option.value)}>
 								<Check
 									size={13}

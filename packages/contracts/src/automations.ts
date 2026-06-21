@@ -24,7 +24,7 @@ import {
 // ===========================================================================
 
 export const automationStatusSchema = z.enum(["enabled", "disabled", "archived"]);
-export const automationModeSchema = z.enum(["read_only", "approval_required", "autonomous"]);
+export const automationModeSchema = z.enum(["read_only", "human_in_the_loop", "autonomous"]);
 export const automationTriggerTypeSchema = z.enum([
 	"manual",
 	"automation_call",
@@ -441,6 +441,10 @@ export const automationTemplateSchema = z.object({
 	integrationRequirements: z.array(automationIntegrationRequirementSchema).default([]),
 	toolGroups: z.array(automationToolGroupSchema).default([]),
 	available: z.boolean(),
+	// When true, this template is surfaced in the automations list as a
+	// toggleable "default automation" (off until enabled). Defaults to true so
+	// every stock template is a default unless explicitly marked agent-only.
+	isDefault: z.boolean().default(true),
 });
 
 export type AutomationTemplatePreferenceType = z.infer<
@@ -479,6 +483,7 @@ export const automationTemplateCreateRequestSchema = z.object({
 	kind: z.literal("template").default("template"),
 	templateKey: z.string().trim().min(1).max(120),
 	name: z.string().trim().min(1).max(200).optional(),
+	mode: automationModeSchema.optional(),
 	settingsValues: metadataSchema.optional(),
 	enabled: z.boolean().optional(),
 	triggers: z.array(automationTriggerCreateRequestSchema).optional(),
@@ -489,7 +494,7 @@ export const automationCustomCreateRequestSchema = z
 		kind: z.literal("custom"),
 		name: z.string().trim().min(1).max(200),
 		description: z.string().trim().min(1).max(1000).nullable().optional(),
-		mode: automationModeSchema,
+		mode: automationModeSchema.optional(),
 		systemPrompt: z.string().trim().max(20000).nullable().optional(),
 		status: z.enum(["enabled", "disabled"]).default("enabled"),
 		settingsSchema: automationSettingsSchemaSchema.default({

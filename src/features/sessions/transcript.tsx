@@ -7,6 +7,7 @@ import { AssistantMarkdown } from "./assistant-markdown";
 import { MessageBubble } from "./message-bubble";
 import { ArtifactChip } from "./modules/artifact-chip";
 import { isModuleTool } from "./modules/registry";
+import { PresentOptionsCard } from "./present-options-card";
 import { ToolGroup } from "./tool-group";
 
 /** Rendered below the transcript when a turn ends abnormally. */
@@ -41,7 +42,13 @@ export function noticeFromStreamEvent(event: ThreadMessageStreamEvent): TurnNoti
 // ordered text/tool parts, then the ephemeral activity line at the bottom.
 // Tool cards come from the live turn runtime and stay visible after the turn
 // completes; input requests render through the approvals query, not here.
-export function Transcript({ turns }: { turns: TranscriptTurn[] }) {
+export function Transcript({
+	onSelectOption,
+	turns,
+}: {
+	onSelectOption?: (label: string) => void;
+	turns: TranscriptTurn[];
+}) {
 	if (turns.length === 0) {
 		return (
 			<div
@@ -68,7 +75,9 @@ export function Transcript({ turns }: { turns: TranscriptTurn[] }) {
 				// while the turn isn't ending on a live tool group (whose own header
 				// carries the streaming state).
 				const blocks = groupParts(turn.parts, {
-					isStandalone: (part) => part.kind === "tool" && isModuleTool(part.tool.tool),
+					isStandalone: (part) =>
+						part.kind === "tool" &&
+						(isModuleTool(part.tool.tool) || part.tool.tool === "present_options"),
 				});
 				const lastIsToolGroup = blocks[blocks.length - 1]?.kind === "tools";
 
@@ -103,11 +112,21 @@ export function Transcript({ turns }: { turns: TranscriptTurn[] }) {
 							}
 
 							// "other" block: a standalone module tool renders its artifact
-							// chip; input-request parts pause the turn and render from the
-							// approvals query in the session view, not here.
-							return block.part.kind === "tool" ? (
-								<ArtifactChip key={block.part.id} toolPart={block.part.tool} />
-							) : null;
+							// chip; present_options renders selectable buttons; input-request
+							// parts pause the turn and render from the approvals query.
+							if (block.part.kind !== "tool") {
+								return null;
+							}
+							if (block.part.tool.tool === "present_options") {
+								return (
+									<PresentOptionsCard
+										key={block.part.id}
+										onSelect={(label) => onSelectOption?.(label)}
+										toolPart={block.part.tool}
+									/>
+								);
+							}
+							return <ArtifactChip key={block.part.id} toolPart={block.part.tool} />;
 						})}
 						{lastIsToolGroup ? null : <ActivitySummaryLine turn={turn} />}
 					</div>

@@ -1,5 +1,5 @@
 import { z } from "zod";
-
+import { automationModeSchema } from "./automations";
 import {
 	agentToolPermissionDecisionSchema,
 	agentToolSideEffectClassSchema,
@@ -59,15 +59,6 @@ export const GRANOLA_SCOPE = {
 	notesRead: "granola.notes:read",
 } as const;
 
-/** Telegram Bot API authenticates with a bot token (no OAuth, no per-user
- * scopes). This internal scope tag keeps the requiredScopes array non-empty for
- * connectors that need a consistent declared-scopes ⊆ requested-scopes check.
- * Bot tokens carry all permissions granted when the bot was created — there is
- * no per-scope grant flow. */
-export const TELEGRAM_SCOPE = {
-	botApi: "telegram.bot:api",
-} as const;
-
 export const healthzResponseSchema = z.object({
 	ok: z.literal(true),
 	service: z.enum(["api", "worker", "mobile"]),
@@ -95,6 +86,7 @@ export const apiErrorCodeSchema = z.enum([
 	"forbidden",
 	"not_found",
 	"conflict",
+	"thread_busy",
 	"rate_limited",
 	"validation_failed",
 	"internal_error",
@@ -525,6 +517,7 @@ export const sessionSchema = z.object({
 	type: threadTypeSchema,
 	origin: threadOriginSchema.default("user"),
 	captureId: uuidSchema.nullable(),
+	permissionMode: z.enum(["ask", "allow_safe", "allow_all"]).default("ask"),
 	title: z.string().nullable(),
 	status: threadStatusSchema,
 	lastMessageAt: isoDateTimeSchema.nullable(),
@@ -536,8 +529,46 @@ export const sessionSchema = z.object({
 export const threadCreateRequestSchema = z.object({
 	type: threadTypeSchema.default("freeform"),
 	captureId: uuidSchema.optional(),
+	permissionMode: z.enum(["ask", "allow_safe", "allow_all"]).optional(),
 	title: z.string().trim().min(1).max(160).optional(),
 	metadata: metadataSchema.default({}),
+});
+
+export const chatPermissionModeSchema = z.enum(["ask", "allow_safe", "allow_all"]);
+
+export const agentAccountPolicySchema = z.object({
+	tenantId: uuidSchema,
+	userId: uuidSchema,
+	chatDefaultMode: chatPermissionModeSchema,
+	lastChatPermissionMode: chatPermissionModeSchema.nullable(),
+	automationDefaultMode: automationModeSchema,
+	metadata: metadataSchema,
+	createdAt: isoDateTimeSchema,
+	updatedAt: isoDateTimeSchema,
+});
+
+export const agentAccountPolicyUpdateRequestSchema = z
+	.object({
+		chatDefaultMode: chatPermissionModeSchema.optional(),
+		lastChatPermissionMode: chatPermissionModeSchema.nullable().optional(),
+		automationDefaultMode: automationModeSchema.optional(),
+		metadata: metadataSchema.optional(),
+	})
+	.refine(
+		(value) =>
+			value.chatDefaultMode !== undefined ||
+			value.lastChatPermissionMode !== undefined ||
+			value.automationDefaultMode !== undefined ||
+			value.metadata !== undefined,
+		{ message: "At least one account policy field must be provided." },
+	);
+
+export const agentAccountPolicyResponseSchema = z.object({
+	policy: agentAccountPolicySchema,
+});
+
+export const threadPermissionModeUpdateRequestSchema = z.object({
+	permissionMode: chatPermissionModeSchema,
 });
 
 export const sessionSourceSchema = z.object({
@@ -740,6 +771,7 @@ export const agentToolPermissionUpdateRequestSchema = z.object({
 
 export const agentToolApprovalDecisionRequestSchema = z.object({
 	decision: z.enum(["approve", "reject"]),
+	escalate: z.literal("always_allow").optional(),
 	note: z.string().trim().min(1).max(1000).optional(),
 });
 
@@ -780,12 +812,14 @@ export const toolUserAvailabilitySchema = z.object({
 export const toolCatalogEntrySchema = z.object({
 	auditRedaction: z.object({ fields: z.array(z.string()) }).optional(),
 	availability: z.enum(["available", "beta", "disabled"]),
+	canAlwaysAllow: z.boolean().default(true),
 	category: z.string().min(1),
 	defaultPermission: agentToolPermissionDecisionSchema,
 	description: z.string().min(1),
 	displayGroup: z.string().nullable(),
 	name: z.string().min(1),
 	origin: z.enum(["connector", "engine", "internal"]),
+	outboundDelivery: z.enum(["always", "input_dependent", "never"]).default("never"),
 	parameters: metadataSchema,
 	policyMode: toolPolicyModeSchema,
 	requiredConnection: z.string().nullable(),
@@ -845,6 +879,7 @@ export const threadMessageCreateRequestSchema = z
 		clientMessageId: z.string().trim().min(1).max(200).optional(),
 		content: z.string().trim().max(8000).default(""),
 		attachments: z.array(attachmentCreateSchema).max(4).default([]),
+		permissionMode: chatPermissionModeSchema.optional(),
 	})
 	.refine((value) => value.content.length > 0 || value.attachments.length > 0, {
 		message: "Message content or at least one attachment is required.",
@@ -1030,6 +1065,7 @@ export type ThreadOrigin = z.infer<typeof threadOriginSchema>;
 export type ThreadStatus = z.infer<typeof threadStatusSchema>;
 export type SessionSourceKind = z.infer<typeof sessionSourceKindSchema>;
 export type SessionSourceRole = z.infer<typeof sessionSourceRoleSchema>;
+export type ChatPermissionMode = z.infer<typeof chatPermissionModeSchema>;
 export type Session = z.infer<typeof sessionSchema>;
 export type SessionSource = z.infer<typeof sessionSourceSchema>;
 export type SessionSourceListResponse = z.infer<typeof sessionSourceListResponseSchema>;
@@ -1046,8 +1082,14 @@ export type WebSource = z.infer<typeof webSourceSchema>;
 export type WebSourceListResponse = z.infer<typeof webSourceListResponseSchema>;
 export type AgentRunTrigger = z.infer<typeof agentRunTriggerSchema>;
 export type ThreadCreateRequest = z.infer<typeof threadCreateRequestSchema>;
+export type ThreadPermissionModeUpdateRequest = z.infer<
+	typeof threadPermissionModeUpdateRequestSchema
+>;
 export type ThreadListResponse = z.infer<typeof threadListResponseSchema>;
 export type ThreadDetailResponse = z.infer<typeof threadDetailResponseSchema>;
+export type AgentAccountPolicy = z.infer<typeof agentAccountPolicySchema>;
+export type AgentAccountPolicyUpdateRequest = z.infer<typeof agentAccountPolicyUpdateRequestSchema>;
+export type AgentAccountPolicyResponse = z.infer<typeof agentAccountPolicyResponseSchema>;
 export type AgentRunStatus = z.infer<typeof agentRunStatusSchema>;
 export type AgentRun = z.infer<typeof agentRunSchema>;
 export type AgentToolApprovalStatus = z.infer<typeof agentToolApprovalStatusSchema>;
@@ -1097,7 +1139,6 @@ export const sourceProviderSchema = z.enum([
 	"github",
 	"granola",
 	"system",
-	"telegram",
 ]);
 export const sourceEventTypeSchema = z.enum([
 	"gmail.message",
@@ -1106,7 +1147,6 @@ export const sourceEventTypeSchema = z.enum([
 	"linear.issue",
 	"github.notification",
 	"meeting.completed",
-	"message.received",
 	"reminder.due",
 	"capture.processed",
 	"system",

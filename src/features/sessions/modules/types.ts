@@ -5,7 +5,7 @@
 // create is still streaming and hasn't been assigned one.
 // ---------------------------------------------------------------------------
 
-export type ModuleKind = "document" | "email" | "overview" | "report" | "transcript";
+export type ModuleKind = "automation" | "document" | "email" | "overview" | "report" | "transcript";
 
 export type ModuleStatus = "streaming" | "ready" | "error";
 
@@ -30,6 +30,13 @@ interface ModuleBase {
 	seq: number;
 	status: ModuleStatus;
 	title: string;
+}
+
+/** The automation the agent just created or edited, shown as an in-chat overview.
+ * The view loads the live automation by id; null while the create is streaming. */
+export interface AutomationModule extends ModuleBase {
+	automationId: string | null;
+	kind: "automation";
 }
 
 export interface DocumentModule extends ModuleBase {
@@ -68,6 +75,7 @@ export interface TranscriptModule extends ModuleBase {
 }
 
 export type Module =
+	| AutomationModule
 	| DocumentModule
 	| EmailModule
 	| OverviewModule

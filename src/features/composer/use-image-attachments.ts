@@ -1,7 +1,7 @@
 "use client";
 
 import type { AttachmentCreate } from "@unison/contracts";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useApi } from "@/lib/api-context";
 import {
@@ -56,6 +56,45 @@ export function useImageAttachments({
 	);
 	const hasPendingAttachments = attachments.some((attachment) => attachment.status !== "uploaded");
 	const canAddMore = attachments.length < MAX_CHAT_IMAGES;
+
+	const deleteUploadedAttachments = useCallback(
+		(drafts: ChatAttachmentDraft[]) => {
+			const storagePaths = Array.from(
+				new Set(
+					drafts
+						.map((attachment) => attachment.storagePath)
+						.filter((storagePath): storagePath is string => Boolean(storagePath)),
+				),
+			);
+
+			if (storagePaths.length === 0) {
+				return;
+			}
+
+			void api
+				.getAccessToken()
+				.then((accessToken) =>
+					Promise.all(
+						storagePaths.map((storagePath) =>
+							deleteStorageObject({
+								accessToken,
+								storagePath,
+							}),
+						),
+					),
+				)
+				.catch(() => undefined);
+		},
+		[api],
+	);
+
+	const discardAttachments = useCallback(
+		(drafts: ChatAttachmentDraft[]) => {
+			releaseAttachments(drafts);
+			deleteUploadedAttachments(drafts);
+		},
+		[deleteUploadedAttachments],
+	);
 
 	function updateAttachment(localId: string, patch: Partial<ChatAttachmentDraft>) {
 		setAttachments((current) =>
@@ -158,31 +197,29 @@ export function useImageAttachments({
 			const target = current.find((attachment) => attachment.localId === localId);
 
 			if (target) {
-				URL.revokeObjectURL(target.previewUrl);
-			}
-			if (target?.storagePath) {
-				void api
-					.getAccessToken()
-					.then((accessToken) =>
-						deleteStorageObject({
-							accessToken,
-							storagePath: target.storagePath ?? "",
-						}),
-					)
-					.catch(() => undefined);
+				discardAttachments([target]);
 			}
 
 			return current.filter((attachment) => attachment.localId !== localId);
 		});
 	}
 
-	function clearAttachments() {
+	function clearAttachments(options: { revokePreviewUrls?: boolean } = {}) {
+		const revokePreviewUrls = options.revokePreviewUrls ?? true;
+
 		setAttachments((current) => {
-			for (const attachment of current) {
-				URL.revokeObjectURL(attachment.previewUrl);
+			if (revokePreviewUrls) {
+				releaseAttachments(current);
 			}
 
 			return [];
+		});
+	}
+
+	function replaceAttachments(next: ChatAttachmentDraft[]) {
+		setAttachments((current) => {
+			discardAttachments(current);
+			return next;
 		});
 	}
 
@@ -192,7 +229,16 @@ export function useImageAttachments({
 		attachments,
 		canAddMore,
 		clearAttachments,
+		discardAttachments,
 		hasPendingAttachments,
+		releaseAttachments,
 		removeAttachment,
+		replaceAttachments,
 	};
+}
+
+function releaseAttachments(attachments: ChatAttachmentDraft[]) {
+	for (const attachment of attachments) {
+		URL.revokeObjectURL(attachment.previewUrl);
+	}
 }
