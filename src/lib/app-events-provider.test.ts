@@ -54,7 +54,7 @@ function session(overrides: Partial<Session> = {}): Session {
 		lastMessageAt: null,
 		metadata: {},
 		origin: "user",
-		permissionMode: "ask",
+		permissionMode: "human_in_the_loop",
 		status: "open",
 		tenantId: TENANT_ID,
 		title: "Session",

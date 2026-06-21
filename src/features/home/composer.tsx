@@ -1,7 +1,11 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ChatPermissionMode, Session } from "@unison/contracts";
+import {
+	type ChatPermissionMode,
+	DEFAULT_CHAT_COMPOSER_MODE,
+	type Session,
+} from "@unison/contracts";
 import { ArrowUp, ImagePlus, Loader2, Mic, Plus, Square, X, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -94,7 +98,7 @@ export function Composer({ value, onChange, seed }: ComposerProps) {
 	});
 	const updatePolicyMutation = useMutation({
 		mutationFn: (mode: ChatPermissionMode) =>
-			api.updateAgentAccountPolicy({ lastChatPermissionMode: mode }),
+			api.updateAgentAccountPolicy({ chatComposerMode: mode }),
 		onSuccess: (response) => {
 			queryClient.setQueryData(["agent-account-policy"], response);
 		},
@@ -105,9 +109,8 @@ export function Composer({ value, onChange, seed }: ComposerProps) {
 	});
 	const permissionMode =
 		localPermissionMode ??
-		accountPolicyQuery.data?.policy.lastChatPermissionMode ??
-		accountPolicyQuery.data?.policy.chatDefaultMode ??
-		"ask";
+		accountPolicyQuery.data?.policy.chatComposerMode ??
+		DEFAULT_CHAT_COMPOSER_MODE;
 	const dictating =
 		transcription.state === "recording" ||
 		transcription.state === "starting" ||

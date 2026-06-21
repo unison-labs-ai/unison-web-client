@@ -71,17 +71,18 @@ const MODE_LABELS: Record<string, string> = {
 
 const MODE_OPTIONS: { description: string; label: string; value: AutomationMode }[] = [
 	{
-		description: "Runs reversible actions automatically; outbound delivery still asks.",
+		description:
+			"Runs allowed non-send actions automatically, including destructive external changes.",
 		label: "Autonomous",
 		value: "autonomous",
 	},
 	{
-		description: "Reads can run, but mutations ask before they happen.",
+		description: "Reads, internal work, and known-safe saves run; other external changes ask.",
 		label: "Human in the loop",
 		value: "human_in_the_loop",
 	},
 	{
-		description: "Only read tools and internal artifacts are available.",
+		description: "External reads and internal work run; external writes are unavailable.",
 		label: "Read only",
 		value: "read_only",
 	},

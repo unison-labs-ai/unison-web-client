@@ -4,6 +4,7 @@ import {
 	agentToolPermissionDecisionSchema,
 	agentToolSideEffectClassSchema,
 	connectionProviderSchema,
+	executionModeSchema,
 	isoDateTimeSchema,
 	metadataSchema,
 	paginationRequestSchema,
@@ -24,7 +25,7 @@ import {
 // ===========================================================================
 
 export const automationStatusSchema = z.enum(["enabled", "disabled", "archived"]);
-export const automationModeSchema = z.enum(["read_only", "human_in_the_loop", "autonomous"]);
+export const automationModeSchema = executionModeSchema;
 export const automationTriggerTypeSchema = z.enum([
 	"manual",
 	"automation_call",

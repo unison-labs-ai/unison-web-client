@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { automationModeSchema } from "./automations";
 import {
 	agentToolPermissionDecisionSchema,
 	agentToolSideEffectClassSchema,
 	connectionProviderSchema,
+	executionModeSchema,
 	isoDateTimeSchema,
 	metadataSchema,
 	paginationResponseSchema,
@@ -526,7 +526,7 @@ export const sessionSchema = z.object({
 	type: threadTypeSchema,
 	origin: threadOriginSchema.default("user"),
 	captureId: uuidSchema.nullable(),
-	permissionMode: z.enum(["ask", "allow_safe", "allow_all"]).default("ask"),
+	permissionMode: executionModeSchema.default("human_in_the_loop"),
 	title: z.string().nullable(),
 	status: threadStatusSchema,
 	lastMessageAt: isoDateTimeSchema.nullable(),
@@ -538,19 +538,17 @@ export const sessionSchema = z.object({
 export const threadCreateRequestSchema = z.object({
 	type: threadTypeSchema.default("freeform"),
 	captureId: uuidSchema.optional(),
-	permissionMode: z.enum(["ask", "allow_safe", "allow_all"]).optional(),
+	permissionMode: executionModeSchema.optional(),
 	title: z.string().trim().min(1).max(160).optional(),
 	metadata: metadataSchema.default({}),
 });
 
-export const chatPermissionModeSchema = z.enum(["ask", "allow_safe", "allow_all"]);
+export const chatPermissionModeSchema = executionModeSchema;
 
 export const agentAccountPolicySchema = z.object({
 	tenantId: uuidSchema,
 	userId: uuidSchema,
-	chatDefaultMode: chatPermissionModeSchema,
-	lastChatPermissionMode: chatPermissionModeSchema.nullable(),
-	automationDefaultMode: automationModeSchema,
+	chatComposerMode: executionModeSchema,
 	metadata: metadataSchema,
 	createdAt: isoDateTimeSchema,
 	updatedAt: isoDateTimeSchema,
@@ -558,19 +556,12 @@ export const agentAccountPolicySchema = z.object({
 
 export const agentAccountPolicyUpdateRequestSchema = z
 	.object({
-		chatDefaultMode: chatPermissionModeSchema.optional(),
-		lastChatPermissionMode: chatPermissionModeSchema.nullable().optional(),
-		automationDefaultMode: automationModeSchema.optional(),
+		chatComposerMode: executionModeSchema.optional(),
 		metadata: metadataSchema.optional(),
 	})
-	.refine(
-		(value) =>
-			value.chatDefaultMode !== undefined ||
-			value.lastChatPermissionMode !== undefined ||
-			value.automationDefaultMode !== undefined ||
-			value.metadata !== undefined,
-		{ message: "At least one account policy field must be provided." },
-	);
+	.refine((value) => value.chatComposerMode !== undefined || value.metadata !== undefined, {
+		message: "At least one account policy field must be provided.",
+	});
 
 export const agentAccountPolicyResponseSchema = z.object({
 	policy: agentAccountPolicySchema,

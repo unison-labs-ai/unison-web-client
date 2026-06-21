@@ -1,7 +1,7 @@
 "use client";
 
 import type { ChatPermissionMode } from "@unison/contracts";
-import { Check, ChevronDown, type LucideIcon, Shield, ShieldCheck, Zap } from "lucide-react";
+import { Check, ChevronDown, Eye, type LucideIcon, ShieldCheck, Zap } from "lucide-react";
 import { useState } from "react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
@@ -19,22 +19,22 @@ type PermissionModeMeta = {
 // tuple so the `?? PERMISSION_MODES[0]` fallback is always defined.
 const PERMISSION_MODES = [
 	{
-		description: "Approve every action before it runs.",
-		icon: Shield,
-		label: "Ask",
-		value: "ask",
+		description: "Reads connected apps and runs internal saves; external writes stay unavailable.",
+		icon: Eye,
+		label: "Read only",
+		value: "read_only",
 	},
 	{
-		description: "Run read-only actions; ask before anything with side effects.",
+		description: "Reads, internal saves, and low-risk external saves; asks before other changes.",
 		icon: ShieldCheck,
-		label: "Allow safe",
-		value: "allow_safe",
+		label: "Human in the loop",
+		value: "human_in_the_loop",
 	},
 	{
-		description: "Run every action automatically, no approvals.",
+		description: "Runs allowed external changes automatically; asks before sends or network.",
 		icon: Zap,
-		label: "Allow all",
-		value: "allow_all",
+		label: "Autonomous",
+		value: "autonomous",
 	},
 ] as const satisfies readonly PermissionModeMeta[];
 

@@ -95,7 +95,6 @@ export function SessionComposer({
 			api.updateThreadPermissionMode(threadId, { permissionMode: mode }),
 		onSuccess: (response) => {
 			queryClient.setQueryData(threadQueryKey(threadId), response);
-			void queryClient.invalidateQueries({ queryKey: ["agent-account-policy"] });
 		},
 	});
 

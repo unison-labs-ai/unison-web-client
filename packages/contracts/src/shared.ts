@@ -39,6 +39,12 @@ export const agentToolPermissionDecisionSchema = z.enum([
 export type AgentToolSideEffectClass = z.infer<typeof agentToolSideEffectClassSchema>;
 export type AgentToolPermissionDecision = z.infer<typeof agentToolPermissionDecisionSchema>;
 
+export const executionModeSchema = z.enum(["read_only", "human_in_the_loop", "autonomous"]);
+
+export type ExecutionMode = z.infer<typeof executionModeSchema>;
+
+export const DEFAULT_CHAT_COMPOSER_MODE: ExecutionMode = "human_in_the_loop";
+
 export const connectionProviderSchema = z.enum([
 	"google",
 	"slack",

@@ -10,6 +10,7 @@ import * as contracts from "./index";
 const expectedExports = [
 	"AUTOMATION_MEMORY_CONTENT_MAX_CHARS",
 	"CAPTURE_PROMPT_MESSAGE_KIND",
+	"DEFAULT_CHAT_COMPOSER_MODE",
 	"DOCUMENT_CONTENT_MAX_CHARS",
 	"DOCUMENT_DEFAULT_TITLE",
 	"DOCUMENT_TITLE_MAX_CHARS",
@@ -226,6 +227,7 @@ const expectedExports = [
 	"evalSuitesResponseSchema",
 	"evalUsageTotalsWireSchema",
 	"evalVerdictWireSchema",
+	"executionModeSchema",
 	"googleAuthorizationCodeRequestSchema",
 	"googleAuthorizationCodeResponseSchema",
 	"googleWorkspaceScopes",
