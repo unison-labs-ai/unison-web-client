@@ -1,0 +1,5 @@
+# Raw `bun test` at the repo root (the built-in runner, not the "test" script) discovers
+# every test file in the monorepo. Pin it to the fast tier: db/e2e/live-tier files run
+# only through their dedicated commands (`bun test:db` / `bun test:e2e` / `bun test:live`).
+[test]
+pathIgnorePatterns = ["**/*.db.test.*", "**/*.e2e.test.*", "**/*.live.test.*"]

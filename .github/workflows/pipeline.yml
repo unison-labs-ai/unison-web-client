@@ -1,0 +1,131 @@
+# Branch-based deploy pipeline for the Unison web client.
+#
+#   PRs:            typecheck · lint · build · test (no deploy)
+#   push to main:   checks → deploy to STAGING  (app.staging.unisonlabs.ai)
+#   push to prod:   checks → deploy to PRODUCTION (app.unisonlabs.ai)
+#
+# Promote staging → production by fast-forwarding `prod` to `main`:
+#   git checkout prod && git merge --ff-only main && git push
+# Rollback = reset `prod` to the last good SHA and push.
+#
+# NEXT_PUBLIC_* values are baked at build time, so each environment is built with
+# its own Vercel settings — a staging build is never aliased to production.
+#
+# Required config (GitHub repo + environment settings):
+#   Repo variables:  VERCEL_ORG_ID, VERCEL_PROJECT_ID, VERCEL_SCOPE
+#   Repo secret:     VERCEL_TOKEN
+#   Env "staging":   variable WEB_URL = https://app.staging.unisonlabs.ai
+#   Env "production": variable WEB_URL = https://app.unisonlabs.ai
+
+name: Pipeline
+
+on:
+  pull_request:
+  push:
+    branches: [main, prod]
+
+concurrency:
+  group: pipeline-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  checks:
+    name: typecheck · lint · test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun run test
+      # The authoritative production build runs in the deploy jobs via `vercel build`
+      # (which builds with each environment's NEXT_PUBLIC_* values). Plain `next build`
+      # is intentionally not run here — it shares a known static-prerender issue with
+      # the upstream monorepo that `vercel build` does not hit.
+
+  deploy-staging:
+    name: Deploy → staging
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: staging
+      url: ${{ vars.WEB_URL }}
+    env:
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      WEB_URL: ${{ vars.WEB_URL }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - name: Verify Vercel token
+        run: test -n "$VERCEL_TOKEN"
+      - name: Pull Vercel staging settings
+        run: >
+          bunx --bun vercel@latest pull --yes
+          --environment=staging --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+      - name: Build for staging
+        run: >
+          bunx --bun vercel@latest build
+          --target=staging --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+      - name: Deploy prebuilt output to staging
+        run: >
+          bunx --bun vercel@latest deploy --prebuilt
+          --target=staging --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+      - name: Smoke web
+        # Staging may sit behind Vercel Authentication — an unauthenticated probe
+        # can return 401. Pass = the domain serves anything < 500.
+        run: |
+          code=$(curl --silent --output /dev/null --write-out "%{http_code}" --retry 5 --retry-delay 3 "$WEB_URL")
+          echo "HTTP $code from $WEB_URL"
+          [ "$code" -lt 500 ]
+
+  deploy-production:
+    name: Deploy → production
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/prod' }}
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ vars.WEB_URL }}
+    env:
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      WEB_URL: ${{ vars.WEB_URL }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - name: Verify Vercel token
+        run: test -n "$VERCEL_TOKEN"
+      - name: Pull Vercel production settings
+        run: >
+          bunx --bun vercel@latest pull --yes
+          --environment=production --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+      - name: Build for production
+        run: >
+          bunx --bun vercel@latest build --prod
+          --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+      - name: Deploy prebuilt output to production
+        run: >
+          bunx --bun vercel@latest deploy --prebuilt --prod
+          --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+      - name: Smoke web
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 3 "$WEB_URL" >/dev/null

@@ -1,0 +1,45 @@
+{
+	"messages": [
+		{
+			"bodyMd": "# Quarterly planning kickoff\n\nFrom: Priya Sharma <priya@example.com>\n\nDate: Tue, 09 Jun 2026 09:12:00 GMT\n\nThread: thread-fixture-001\n\n## Preview\n\nKicking off Q3 planning — agenda attached, please add your items by Friday.",
+			"bodyPreview": "Kicking off Q3 planning — agenda attached, please add your items by Friday.",
+			"date": "Tue, 09 Jun 2026 09:12:00 GMT",
+			"from": "Priya Sharma <priya@example.com>",
+			"historyId": "881001",
+			"id": "fixture-msg-001",
+			"messageKey": "thread-fixture-001",
+			"snippet": "Kicking off Q3 planning — agenda attached, please add your items by Friday.",
+			"subject": "Quarterly planning kickoff",
+			"threadId": "thread-fixture-001",
+			"title": "Quarterly planning kickoff"
+		},
+		{
+			"bodyMd": "# Invoice #2241 due\n\nFrom: Billing <billing@vendor.example.com>\n\nDate: Mon, 08 Jun 2026 16:40:00 GMT\n\nThread: thread-fixture-002\n\n## Preview\n\nInvoice #2241 for May services is due on June 15.",
+			"bodyPreview": "Invoice #2241 for May services is due on June 15.",
+			"date": "Mon, 08 Jun 2026 16:40:00 GMT",
+			"from": "Billing <billing@vendor.example.com>",
+			"historyId": "881002",
+			"id": "fixture-msg-002",
+			"messageKey": "thread-fixture-002",
+			"snippet": "Invoice #2241 for May services is due on June 15.",
+			"subject": "Invoice #2241 due",
+			"threadId": "thread-fixture-002",
+			"title": "Invoice #2241 due"
+		},
+		{
+			"bodyMd": "# Re: Offsite logistics\n\nFrom: Sam Okafor <sam@example.com>\n\nDate: Mon, 08 Jun 2026 11:05:00 GMT\n\nThread: thread-fixture-003\n\n## Preview\n\nVenue is confirmed for the 24th; sending the room list tomorrow.",
+			"bodyPreview": "Venue is confirmed for the 24th; sending the room list tomorrow.",
+			"date": "Mon, 08 Jun 2026 11:05:00 GMT",
+			"from": "Sam Okafor <sam@example.com>",
+			"historyId": "881003",
+			"id": "fixture-msg-003",
+			"messageKey": "thread-fixture-003",
+			"snippet": "Venue is confirmed for the 24th; sending the room list tomorrow.",
+			"subject": "Re: Offsite logistics",
+			"threadId": "thread-fixture-003",
+			"title": "Re: Offsite logistics"
+		}
+	],
+	"nextPageToken": null,
+	"query": "newer_than:7d"
+}

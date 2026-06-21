@@ -1,0 +1,15 @@
+{
+	"parts": [
+		{
+			"kind": "tool",
+			"tool": "brain.search",
+			"status": "completed",
+			"output": { "results": [{ "title": "Launch", "path": "/notes/launch.md" }] }
+		},
+		{
+			"kind": "text",
+			"text": "The launch review is Thursday."
+		}
+	],
+	"summaryPhraseDuringTurn": "Checking the launch notes"
+}
