@@ -203,6 +203,24 @@ export function ConnectionDetail({ provider }: ConnectionDetailProps) {
 		onSuccess: async (result: ConnectionConnectResponse) => {
 			const popup = popupRef.current;
 			popupRef.current = null;
+
+			// Telegram links via a t.me deep link — the connection completes inside
+			// Telegram (the /start handshake), not via an OAuth redirect back. So
+			// skip the popup-and-poll flow: open the deep link in a new tab and let
+			// the user finish in Telegram, then refresh.
+			if (provider === "telegram" && result.connectUrl) {
+				if (popup && !popup.closed) {
+					popup.close();
+				}
+				window.open(result.connectUrl, "_blank", "noopener,noreferrer");
+				setInfoMessage(
+					result.message ?? "Open Telegram and tap Start to finish connecting, then refresh.",
+				);
+				await queryClient.invalidateQueries({ queryKey: ["connection", provider] });
+				await queryClient.invalidateQueries({ queryKey: ["connections"] });
+				return;
+			}
+
 			if (result.connectUrl) {
 				if (popup && !popup.closed) {
 					popup.location.href = result.connectUrl;
