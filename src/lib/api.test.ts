@@ -218,12 +218,14 @@ function stubFetch(...responses: Response[]) {
 function createClient(input?: {
 	apiBaseUrl?: string;
 	getToken?: () => string | null | Promise<string | null>;
+	onUnauthorized?: () => void;
 	requestTimeoutMs?: number;
 	token?: string | null;
 }) {
 	return new WebApiClient({
 		apiBaseUrl: input?.apiBaseUrl ?? "https://api.test/",
 		getToken: input?.getToken ?? (() => (input?.token === undefined ? "token-123" : input.token)),
+		onUnauthorized: input?.onUnauthorized,
 		requestTimeoutMs: input?.requestTimeoutMs,
 	});
 }
@@ -582,11 +584,26 @@ describe("WebApiClient error handling", () => {
 	it("requires a bearer token before issuing any request", async () => {
 		stubFetch();
 
+		let unauthorizedCount = 0;
 		await expectWebApiError(createClient({ token: null }).getMe(), {
 			message: "A bearer token is required.",
 			status: 401,
 		});
 		expect(recordedRequests).toHaveLength(0);
+
+		await expectWebApiError(
+			createClient({
+				onUnauthorized: () => {
+					unauthorizedCount += 1;
+				},
+				token: null,
+			}).getMe(),
+			{
+				message: "A bearer token is required.",
+				status: 401,
+			},
+		);
+		expect(unauthorizedCount).toBe(1);
 	});
 
 	it("fails fast when the API base URL is not configured", async () => {
@@ -641,5 +658,58 @@ describe("WebApiClient error handling", () => {
 			},
 		);
 		expect(recordedRequests).toHaveLength(0);
+	});
+
+	it("treats unauthorized app-event streams like unauthorized JSON requests", async () => {
+		const envelope = apiErrorResponseSchema.parse({
+			error: { code: "unauthorized", message: "Supabase JWT is invalid or expired." },
+		});
+		stubFetch(Response.json(envelope, { status: 401 }));
+		let unauthorizedCount = 0;
+
+		await expectWebApiError(
+			createClient({
+				onUnauthorized: () => {
+					unauthorizedCount += 1;
+				},
+			}).streamAppEvents({
+				onEvent: () => {
+					throw new Error("Unexpected SSE event.");
+				},
+			}),
+			{
+				message: "Supabase JWT is invalid or expired.",
+				status: 401,
+			},
+		);
+
+		expect(unauthorizedCount).toBe(1);
+		expect(lastRequest().url).toBe("https://api.test/v1/events");
+	});
+
+	it("can open app-event streams without historical replay", async () => {
+		stubFetch(
+			new Response("", {
+				headers: {
+					"content-type": "text/event-stream",
+					"x-unison-app-event-cursor": "42",
+				},
+				status: 200,
+			}),
+		);
+		let cursor = 0;
+
+		await createClient().streamAppEvents({
+			onCursor: (seq) => {
+				cursor = seq;
+			},
+			onEvent: () => {
+				throw new Error("Unexpected SSE event.");
+			},
+			replay: false,
+		});
+
+		expect(cursor).toBe(42);
+		expect(lastRequest().url).toBe("https://api.test/v1/events?replay=0");
 	});
 });

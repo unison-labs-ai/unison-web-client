@@ -1,7 +1,11 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Session } from "@unison/contracts";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+	type ChatPermissionMode,
+	DEFAULT_CHAT_COMPOSER_MODE,
+	type Session,
+} from "@unison/contracts";
 import { ArrowUp, ImagePlus, Loader2, Mic, Plus, Square, X, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -13,6 +17,7 @@ import {
 	type ChipInputSeedPart,
 } from "@/features/composer/chip-input";
 import { DictationWaveform, formatElapsed } from "@/features/composer/dictation-visuals";
+import { PermissionModeControl } from "@/features/composer/permission-mode-control";
 import { AUTOMATION_CHIP, buildSlashCommands } from "@/features/composer/slash-commands";
 import { useDictationControls } from "@/features/composer/use-dictation-controls";
 import { useImageAttachments } from "@/features/composer/use-image-attachments";
@@ -72,6 +77,7 @@ export function Composer({ value, onChange, seed }: ComposerProps) {
 	const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
 	const [draftThread, setDraftThread] = useState<Session | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [localPermissionMode, setLocalPermissionMode] = useState<ChatPermissionMode | null>(null);
 	const transcription = useRealtimeTranscription();
 
 	// The slash menu lists the user's automations as mention chips — share the
@@ -85,6 +91,26 @@ export function Composer({ value, onChange, seed }: ComposerProps) {
 		() => buildSlashCommands(automationsQuery.data ?? []),
 		[automationsQuery.data],
 	);
+	const accountPolicyQuery = useQuery({
+		queryFn: () => api.getAgentAccountPolicy(),
+		queryKey: ["agent-account-policy"],
+		staleTime: 30_000,
+	});
+	const updatePolicyMutation = useMutation({
+		mutationFn: (mode: ChatPermissionMode) =>
+			api.updateAgentAccountPolicy({ chatComposerMode: mode }),
+		onSuccess: (response) => {
+			queryClient.setQueryData(["agent-account-policy"], response);
+		},
+	});
+	const updateThreadModeMutation = useMutation({
+		mutationFn: ({ mode, threadId }: { mode: ChatPermissionMode; threadId: string }) =>
+			api.updateThreadPermissionMode(threadId, { permissionMode: mode }),
+	});
+	const permissionMode =
+		localPermissionMode ??
+		accountPolicyQuery.data?.policy.chatComposerMode ??
+		DEFAULT_CHAT_COMPOSER_MODE;
 	const dictating =
 		transcription.state === "recording" ||
 		transcription.state === "starting" ||
@@ -123,6 +149,7 @@ export function Composer({ value, onChange, seed }: ComposerProps) {
 
 			const created = await api.createThread({
 				metadata: {},
+				permissionMode,
 				title: draftTitle.slice(0, 80) || "Photo",
 				type: "freeform",
 			});
@@ -132,8 +159,17 @@ export function Composer({ value, onChange, seed }: ComposerProps) {
 
 			return created.thread;
 		},
-		[api],
+		[api, permissionMode],
 	);
+
+	function changePermissionMode(mode: ChatPermissionMode) {
+		setLocalPermissionMode(mode);
+		if (draftThreadRef.current) {
+			void updateThreadModeMutation.mutateAsync({ mode, threadId: draftThreadRef.current.id });
+		} else {
+			void updatePolicyMutation.mutateAsync(mode);
+		}
+	}
 
 	const {
 		addFiles,
@@ -156,7 +192,7 @@ export function Composer({ value, onChange, seed }: ComposerProps) {
 		setSubmitting(true);
 		setError(null);
 		try {
-			const request = { attachments: attachmentPayload, content: text };
+			const request = { attachments: attachmentPayload, content: text, permissionMode };
 			const targetThread = draftThreadRef.current ?? draftThread;
 			const res = targetThread
 				? await api.sendThreadMessage(targetThread.id, request)
@@ -341,6 +377,11 @@ export function Composer({ value, onChange, seed }: ComposerProps) {
 					</>
 				) : (
 					<>
+						<PermissionModeControl
+							disabled={submitting}
+							mode={permissionMode}
+							onChange={changePermissionMode}
+						/>
 						<div style={{ flex: 1 }} />
 						<Button
 							aria-label="Start dictation"

@@ -90,6 +90,18 @@ describe("contracts", () => {
 			}).success,
 		).toBe(true);
 		expect(
+			threadMessageStreamEventSchema.safeParse({
+				type: "tool.started",
+				sessionId: "11111111-1111-4111-8111-111111111111",
+				turnId: "44444444-4444-4444-8444-444444444444",
+				toolCallId: "55555555-5555-4555-8555-555555555555",
+				toolName: "brain.search",
+				input: { query: "phase 3" },
+				providerOptions: { google: { thoughtSignature: "sig-1" } },
+				index: 2,
+			}).success,
+		).toBe(true);
+		expect(
 			appEventSchema.safeParse({
 				seq: 1,
 				type: "message.delta",
@@ -445,9 +457,9 @@ describe("contracts", () => {
 	test("accepts a valid automation create payload", () => {
 		expect(
 			automationCreateRequestSchema.safeParse({
-				templateKey: "daily-capture-digest",
-				name: "My digest",
-				settingsValues: { hour: 8 },
+				templateKey: "morning-briefing",
+				name: "My briefing",
+				settingsValues: { includeCapturesHours: 24 },
 				enabled: true,
 			}).success,
 		).toBe(true);
@@ -829,35 +841,41 @@ describe("contracts", () => {
 	test("validates a stock automation template shape", () => {
 		expect(
 			automationTemplateSchema.safeParse({
-				key: "daily-capture-digest",
+				key: "morning-briefing",
 				version: 1,
-				name: "Daily Capture Digest",
-				description: "Digest of recent captures.",
+				name: "Morning Briefing",
+				description: "Briefing from recent captures and context.",
 				category: "internal",
 				mode: "autonomous",
-				systemPrompt: "Summarize the last 24 hours of captures.",
+				systemPrompt: "Summarize recent captures and context.",
 				status: "available",
-				tools: ["capture.listRecent", "notification.create"],
+				tools: ["capture.listRecent", "brain.search", "notification.create"],
 				triggers: [{ triggerType: "schedule", config: { frequency: "daily", hour: 8 } }],
 				preferenceFields: [
-					{ key: "hour", label: "Send hour", type: "number", required: false, default: 8 },
+					{
+						key: "includeCapturesHours",
+						label: "Capture window",
+						type: "number",
+						required: false,
+						default: 24,
+					},
 				],
-				defaultPreferences: { hour: 8 },
+				defaultPreferences: { includeCapturesHours: 24 },
 				settingsSchema: {
 					version: 1,
 					sections: [{ key: "schedule", label: "Schedule" }],
 					fields: [
 						{
-							key: "hour",
-							label: "Send hour",
+							key: "includeCapturesHours",
+							label: "Capture window",
 							type: "number",
 							sectionKey: "schedule",
 							required: false,
-							default: 8,
+							default: 24,
 						},
 					],
 				},
-				defaultSettings: { hour: 8 },
+				defaultSettings: { includeCapturesHours: 24 },
 				outputContracts: [
 					{ kind: "session_reply", label: "Session summary", required: true, config: {} },
 				],

@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import { installFetchMock } from "@unison/testkit/http";
 import { z } from "zod";
 
-import { emitSseBlocks, parseSseBlock, readSseStream } from "./sse";
+import { emitSseBlocks, parseSseBlock, readSseStream, SseRequestError } from "./sse";
 
 const eventSchema = z.object({
 	index: z.number(),
@@ -49,6 +49,7 @@ describe("SSE parsing", () => {
 
 	it("reports activity when the stream opens before event data arrives", async () => {
 		let activityCount = 0;
+		const openedWithHeaders: Array<string | null> = [];
 		const fetchMock = installFetchMock({
 			fallthrough: "error",
 			routes: [
@@ -61,7 +62,13 @@ describe("SSE parsing", () => {
 									controller.close();
 								},
 							}),
-							{ headers: { "content-type": "text/event-stream" }, status: 200 },
+							{
+								headers: {
+									"content-type": "text/event-stream",
+									"x-unison-app-event-cursor": "7",
+								},
+								status: 200,
+							},
 						),
 				},
 			],
@@ -75,11 +82,15 @@ describe("SSE parsing", () => {
 				onEvent: () => {
 					throw new Error("Unexpected SSE event.");
 				},
+				onOpen: (response) => {
+					openedWithHeaders.push(response.headers.get("x-unison-app-event-cursor"));
+				},
 				schema: eventSchema,
 				url: "http://example.test/events",
 			});
 
 			expect(activityCount).toBe(1);
+			expect(openedWithHeaders).toEqual(["7"]);
 		} finally {
 			fetchMock.restore();
 		}
@@ -97,15 +108,24 @@ describe("SSE parsing", () => {
 		});
 
 		try {
-			await expect(
-				readSseStream({
+			let caught: unknown;
+			try {
+				await readSseStream({
 					onEvent: () => {
 						throw new Error("Unexpected SSE event.");
 					},
 					schema: eventSchema,
 					url: "http://example.test/events",
-				}),
-			).rejects.toThrow("SSE request failed with status 404: Agent session was not found.");
+				});
+			} catch (error) {
+				caught = error;
+			}
+
+			expect(caught).toBeInstanceOf(SseRequestError);
+			expect(caught).toHaveProperty(
+				"message",
+				"SSE request failed with status 404: Agent session was not found.",
+			);
 		} finally {
 			fetchMock.restore();
 		}

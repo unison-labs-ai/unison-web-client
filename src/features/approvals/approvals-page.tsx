@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { AgentToolApproval } from "@unison/contracts";
+import type { AgentToolApproval, AgentToolApprovalDecisionRequest } from "@unison/contracts";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PageShell } from "@/features/shell/page-shell";
 import { useApi } from "@/lib/api-context";
@@ -40,11 +40,11 @@ export function ApprovalsPage() {
 	const decideMutation = useMutation({
 		mutationFn: ({
 			approvalId,
-			decision,
+			request,
 		}: {
 			approvalId: string;
-			decision: "approve" | "reject";
-		}) => api.decideApproval(approvalId, { decision }),
+			request: AgentToolApprovalDecisionRequest;
+		}) => api.decideApproval(approvalId, request),
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({ queryKey: ["approvals"] });
 		},
@@ -64,7 +64,9 @@ export function ApprovalsPage() {
 		const pending = sessionApprovals.filter((a) => a.status === "pending");
 		try {
 			await Promise.all(
-				pending.map((a) => decideMutation.mutateAsync({ approvalId: a.id, decision: "approve" })),
+				pending.map((a) =>
+					decideMutation.mutateAsync({ approvalId: a.id, request: { decision: "approve" } }),
+				),
 			);
 		} catch {
 			// surfaced via decideMutation.isError below
@@ -197,8 +199,8 @@ export function ApprovalsPage() {
 									<ApprovalCard
 										approval={approval}
 										key={approval.id}
-										onDecide={(decision) =>
-											decideMutation.mutate({ approvalId: approval.id, decision })
+										onDecide={(request) =>
+											decideMutation.mutate({ approvalId: approval.id, request })
 										}
 									/>
 								))}

@@ -48,9 +48,10 @@ const TOOLSET_META: Record<string, { icon: LucideIcon; label: string }> = {
 export const ORPHAN_TOOLSET_ID = "__other";
 
 export type ToolsetTool = {
+	canAlwaysAllow: boolean;
 	description: string | null;
-	/** Override locked by workspace policy — the approval menu is disabled. */
-	floor: "approval" | "fixed" | null;
+	/** Fixed tools keep their default permission; the approval override menu is disabled. */
+	isFixed: boolean;
 	name: string;
 	title: string;
 };
@@ -71,12 +72,6 @@ function toolsetIdentity(
 	if (known) return known;
 	const label = displayGroup ?? id.charAt(0).toUpperCase() + id.slice(1).replaceAll("_", " ");
 	return { icon: Wrench, label };
-}
-
-function toolFloor(tool: ToolCatalogEntryWithAvailability): "approval" | "fixed" | null {
-	if (tool.policyMode === "fixed") return "fixed";
-	if (tool.policyMode === "required") return "approval";
-	return null;
 }
 
 /**
@@ -107,8 +102,9 @@ export function buildToolsets(
 			sets.set(tool.toolsetId, set);
 		}
 		set.tools.push({
+			canAlwaysAllow: tool.canAlwaysAllow,
 			description: tool.description,
-			floor: toolFloor(tool),
+			isFixed: tool.policyMode === "fixed",
 			name: tool.name,
 			title: tool.title || tool.name,
 		});
@@ -124,8 +120,9 @@ export function buildToolsets(
 			id: ORPHAN_TOOLSET_ID,
 			label: "Other",
 			tools: orphans.map((binding) => ({
+				canAlwaysAllow: true,
 				description: binding.unavailableReason,
-				floor: null,
+				isFixed: false,
 				name: binding.toolName,
 				title: binding.toolName,
 			})),

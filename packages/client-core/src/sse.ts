@@ -24,6 +24,22 @@ export class SseParseError extends Error {
 	}
 }
 
+export class SseRequestError extends Error {
+	readonly detail: string | null;
+	readonly status: number;
+
+	constructor(status: number, detail: string | null = null) {
+		super(
+			detail
+				? `SSE request failed with status ${status}: ${detail}`
+				: `SSE request failed with status ${status}.`,
+		);
+		this.name = "SseRequestError";
+		this.status = status;
+		this.detail = detail;
+	}
+}
+
 export function parseSseBlock<T>(block: string, schema: z.ZodType<T>): T | null {
 	const lines = block.split(/\r?\n/);
 	const eventName =
@@ -118,6 +134,7 @@ export type ReadSseStreamOptions<T> = {
 	headers?: Record<string, string>;
 	onActivity?: () => void;
 	onEvent: (event: T) => void;
+	onOpen?: (response: Response) => void;
 	schema: z.ZodType<T>;
 	signal?: AbortSignal;
 	url: string;
@@ -136,13 +153,10 @@ export async function readSseStream<T>(options: ReadSseStreamOptions<T>): Promis
 	if (!response.ok) {
 		const text = await response.text().catch(() => "");
 		const detail = errorDetailFromResponseText(text);
-		throw new Error(
-			detail
-				? `SSE request failed with status ${response.status}: ${detail}`
-				: `SSE request failed with status ${response.status}.`,
-		);
+		throw new SseRequestError(response.status, detail);
 	}
 
+	options.onOpen?.(response);
 	options.onActivity?.();
 
 	if (!response.body || !("getReader" in response.body)) {

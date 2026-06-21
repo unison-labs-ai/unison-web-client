@@ -3,6 +3,7 @@ import { recordValue, stringListValue, stringValue, type ToolPart } from "@/lib/
 
 import { moduleToolSpec } from "./registry";
 import type {
+	AutomationModule,
 	DocumentModule,
 	EmailDraftContent,
 	EmailModule,
@@ -191,6 +192,22 @@ function buildModule(
 			kind: "email",
 			title: email.subject.trim().length > 0 ? email.subject : "Email draft",
 		};
+		return module;
+	}
+
+	if (kind === "automation") {
+		const priorAutomation = existing?.kind === "automation" ? existing : undefined;
+		const automationId =
+			stringValue(recordValue(output?.automation), "id") ??
+			stringValue(input, "automationId") ??
+			priorAutomation?.automationId ??
+			null;
+		const title =
+			stringValue(recordValue(output?.automation), "name") ??
+			stringValue(recordValue(input?.fields), "name") ??
+			priorAutomation?.title ??
+			"Automation";
+		const module: AutomationModule = { ...base, automationId, kind: "automation", title };
 		return module;
 	}
 

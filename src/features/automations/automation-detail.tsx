@@ -65,14 +65,27 @@ import { ToolsModal, TriggersModal } from "./manage-modals";
 
 const MODE_LABELS: Record<string, string> = {
 	autonomous: "Autonomous",
-	approval_required: "Approval required",
+	human_in_the_loop: "Human in the loop",
 	read_only: "Read only",
 };
 
-const MODE_OPTIONS: { label: string; value: AutomationMode }[] = [
-	{ label: "Autonomous", value: "autonomous" },
-	{ label: "Approval required", value: "approval_required" },
-	{ label: "Read only", value: "read_only" },
+const MODE_OPTIONS: { description: string; label: string; value: AutomationMode }[] = [
+	{
+		description:
+			"Runs allowed non-send actions automatically, including destructive external changes.",
+		label: "Autonomous",
+		value: "autonomous",
+	},
+	{
+		description: "Reads, internal work, and known-safe saves run; other external changes ask.",
+		label: "Human in the loop",
+		value: "human_in_the_loop",
+	},
+	{
+		description: "External reads and internal work run; external writes are unavailable.",
+		label: "Read only",
+		value: "read_only",
+	},
 ];
 
 // Run status stays neutral ink — only problems get color (failed, approval).
@@ -828,6 +841,7 @@ function ToolsCard({
 		[catalogQuery.data, toolBindings],
 	);
 	const activeToolsets = toolsets.filter((set) => set.enabledCount > 0);
+	const selectedModeOption = MODE_OPTIONS.find((option) => option.value === modeValue);
 
 	return (
 		<CollapsibleCard
@@ -853,6 +867,11 @@ function ToolsCard({
 						</option>
 					))}
 				</select>
+				{selectedModeOption ? (
+					<p className="type-small" style={{ color: "var(--ink-muted)", margin: "6px 0 0" }}>
+						{selectedModeOption.description}
+					</p>
+				) : null}
 			</GroupRow>
 			{modeMutation.isError && <InlineError>Failed to update execution mode.</InlineError>}
 

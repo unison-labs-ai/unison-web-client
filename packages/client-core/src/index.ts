@@ -1,10 +1,27 @@
 export {
+	type AutomationCatalogEntry,
+	mergeAutomationCatalog,
+} from "./automation-catalog";
+export {
+	automationMentionColor,
+	automationMentionToken,
+	CREATE_AUTOMATION_TOKEN,
+	matchesSlashQuery,
+	slashCommandQuery,
+} from "./automation-slash";
+export {
+	type PresentOption,
+	type PresentOptions,
+	parsePresentOptions,
+} from "./present-options";
+export {
 	emitSseBlocks,
 	flushSseBuffer,
 	parseSseBlock,
 	type ReadSseStreamOptions,
 	readSseStream,
 	SseParseError,
+	SseRequestError,
 } from "./sse";
 export {
 	TOOL_ROW_LABEL,

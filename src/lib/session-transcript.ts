@@ -121,6 +121,10 @@ export function toolPresentation(name: string): ToolPresentation {
 }
 
 export function summarizeToolResult(tool: ToolPart): string | undefined {
+	if (tool.status === "pending") {
+		return "Pending approval";
+	}
+
 	if (tool.status === "error") {
 		return "Failed";
 	}
@@ -215,6 +219,10 @@ export function stringListValue(
 	return listValue(source, key).filter(
 		(item): item is string => typeof item === "string" && item.trim().length > 0,
 	);
+}
+
+function isPendingApprovalOutput(output: Record<string, unknown> | undefined): boolean {
+	return stringValue(output, "code") === "needs_approval";
 }
 
 export function formatDisplayValue(value: unknown): string {
@@ -390,7 +398,7 @@ type TurnEvent =
 			kind: "tool-completed";
 			output?: Record<string, unknown>;
 			outputTruncated?: boolean;
-			status: "completed" | "error";
+			status: "completed" | "error" | "pending";
 			tool?: string;
 	  }
 	| {
@@ -461,13 +469,15 @@ function buildTurnRuntime(records: StreamEventRecord[]): Record<string, TurnRunt
 
 		if (event.type === "tool.completed") {
 			const output = event.output;
+			const pendingApproval = event.status === "failed" && isPendingApprovalOutput(output);
 			runtimes[turnId] = applyTurnEvent(current, {
 				callId: event.toolCallId,
-				errorText: event.status === "failed" ? toolErrorText(output) : undefined,
+				errorText:
+					event.status === "failed" && !pendingApproval ? toolErrorText(output) : undefined,
 				kind: "tool-completed",
 				output,
 				outputTruncated: event.outputTruncated,
-				status: event.status === "failed" ? "error" : "completed",
+				status: pendingApproval ? "pending" : event.status === "failed" ? "error" : "completed",
 				tool: event.toolName,
 			});
 			continue;

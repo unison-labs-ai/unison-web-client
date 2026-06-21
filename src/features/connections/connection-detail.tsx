@@ -8,6 +8,7 @@ import {
 	connectionProviderSchema,
 } from "@unison/contracts";
 import { useRouter } from "next/navigation";
+import { QRCodeSVG } from "qrcode.react";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { connectErrorMessage } from "@/features/connections/connect-error";
@@ -137,6 +138,10 @@ export function ConnectionDetail({ provider }: ConnectionDetailProps) {
 	const pollRef = useRef<number | null>(null);
 	const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
 	const [infoMessage, setInfoMessage] = useState<string | null>(null);
+	// Telegram links via a t.me deep link. Desktop browsers fall back to Telegram
+	// Web, which doesn't reliably apply ?start= — so instead of a popup we show a
+	// QR (scan → opens the app, where it works) plus a copyable /start command.
+	const [telegramConnectUrl, setTelegramConnectUrl] = useState<string | null>(null);
 
 	// Validate the route param against the contract enum: an unknown provider
 	// is "not found", a known one without a row is "not connected".
@@ -203,6 +208,19 @@ export function ConnectionDetail({ provider }: ConnectionDetailProps) {
 		onSuccess: async (result: ConnectionConnectResponse) => {
 			const popup = popupRef.current;
 			popupRef.current = null;
+
+			// Telegram: show the QR + manual fallback panel instead of the OAuth
+			// popup (Telegram Web drops the ?start= payload on desktop).
+			if (provider === "telegram" && result.connectUrl) {
+				if (popup && !popup.closed) {
+					popup.close();
+				}
+				setTelegramConnectUrl(result.connectUrl);
+				await queryClient.invalidateQueries({ queryKey: ["connection", provider] });
+				await queryClient.invalidateQueries({ queryKey: ["connections"] });
+				return;
+			}
+
 			if (result.connectUrl) {
 				if (popup && !popup.closed) {
 					popup.location.href = result.connectUrl;
@@ -228,11 +246,15 @@ export function ConnectionDetail({ provider }: ConnectionDetailProps) {
 		if (!knownProvider) return;
 		setFallbackUrl(null);
 		setInfoMessage(null);
+		setTelegramConnectUrl(null);
 
-		// Open the popup synchronously in the click handler — popup blockers
-		// (Safari/Firefox always) kill window.open calls made after an await.
-		// Granola included: its connect flow is MCP OAuth, same shape as Google.
-		popupRef.current = window.open("", "_blank", "width=520,height=640");
+		// Telegram doesn't use the OAuth popup — it renders the QR panel below.
+		if (knownProvider !== "telegram") {
+			// Open the popup synchronously in the click handler — popup blockers
+			// (Safari/Firefox always) kill window.open calls made after an await.
+			// Granola included: its connect flow is MCP OAuth, same shape as Google.
+			popupRef.current = window.open("", "_blank", "width=520,height=640");
+		}
 		connectMutation.mutate(knownProvider);
 	}
 
@@ -469,6 +491,60 @@ export function ConnectionDetail({ provider }: ConnectionDetailProps) {
 					</a>
 				</p>
 			)}
+			{telegramConnectUrl &&
+				(() => {
+					let botUsername = "";
+					let startCommand = "";
+					try {
+						const parsed = new URL(telegramConnectUrl);
+						botUsername = parsed.pathname.replace(/^\//, "");
+						startCommand = `/start ${parsed.searchParams.get("start") ?? ""}`;
+					} catch {
+						// keep empty fallbacks
+					}
+
+					return (
+						<div
+							style={{
+								border: "1px solid var(--border)",
+								borderRadius: 12,
+								marginTop: 16,
+								padding: 16,
+							}}
+						>
+							<p className="type-small" style={{ color: "var(--ink-subtle)", margin: "0 0 12px" }}>
+								Scan with your phone to open the Unison bot in Telegram and tap{" "}
+								<strong>Start</strong>:
+							</p>
+							<div
+								style={{ background: "#fff", borderRadius: 8, padding: 12, width: "fit-content" }}
+							>
+								<QRCodeSVG size={160} value={telegramConnectUrl} />
+							</div>
+							<p className="type-small" style={{ margin: "12px 0 0" }}>
+								<a
+									className="text-ink-muted underline hover:text-ink"
+									href={telegramConnectUrl}
+									rel="noreferrer"
+									target="_blank"
+								>
+									Open in Telegram →
+								</a>
+							</p>
+							<p className="type-small" style={{ color: "var(--ink-subtle)", margin: "12px 0 0" }}>
+								On a laptop without the QR? Open <code>@{botUsername}</code> in Telegram and send{" "}
+								<code>{startCommand}</code>{" "}
+								<button
+									className="text-ink-muted underline hover:text-ink"
+									onClick={() => navigator.clipboard?.writeText(startCommand)}
+									type="button"
+								>
+									Copy
+								</button>
+							</p>
+						</div>
+					);
+				})()}
 
 			{/* Disconnect confirmation dialog */}
 			<Dialog onOpenChange={setDisconnectOpen} open={disconnectOpen}>

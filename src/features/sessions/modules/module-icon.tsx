@@ -1,4 +1,4 @@
-import { FileText, Layers, type LucideIcon, Mail, Mic, ScrollText } from "lucide-react";
+import { FileText, Layers, type LucideIcon, Mail, Mic, ScrollText, Zap } from "lucide-react";
 
 import type { ModuleKind } from "./types";
 
@@ -8,6 +8,8 @@ import type { ModuleKind } from "./types";
 
 export function moduleIcon(kind: ModuleKind): LucideIcon {
 	switch (kind) {
+		case "automation":
+			return Zap;
 		case "email":
 			return Mail;
 		case "overview":
@@ -23,6 +25,8 @@ export function moduleIcon(kind: ModuleKind): LucideIcon {
 
 export function moduleKindLabel(kind: ModuleKind): string {
 	switch (kind) {
+		case "automation":
+			return "Automation";
 		case "email":
 			return "Email";
 		case "overview":

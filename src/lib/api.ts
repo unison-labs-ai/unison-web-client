@@ -1,6 +1,8 @@
 import {
 	type AccountDeleteResponse,
 	type AccountRequestResponse,
+	type AgentAccountPolicyResponse,
+	type AgentAccountPolicyUpdateRequest,
 	type AgentToolApproval,
 	type AgentToolApprovalActionResponse,
 	type AgentToolApprovalDecisionRequest,
@@ -35,6 +37,7 @@ import {
 	type AutomationWithRelations,
 	accountDeleteResponseSchema,
 	accountRequestResponseSchema,
+	agentAccountPolicyResponseSchema,
 	agentToolApprovalActionResponseSchema,
 	agentToolApprovalListResponseSchema,
 	agentToolPermissionActionResponseSchema,
@@ -148,6 +151,7 @@ import {
 	type ThreadMessageListResponse,
 	type ThreadMessageSendResponse,
 	type ThreadMessageStreamEvent,
+	type ThreadPermissionModeUpdateRequest,
 	type ToolCatalogResponse,
 	type TranscriptionRealtimeTokenResponse,
 	threadDetailResponseSchema,
@@ -164,7 +168,7 @@ import {
 } from "@unison/contracts";
 import type { z } from "zod";
 
-import { readSseStream } from "./sse";
+import { readSseStream, SseRequestError } from "./sse";
 
 type RequestOptions = {
 	body?: unknown;
@@ -189,7 +193,9 @@ type StreamThreadOptions = {
 type StreamAppEventsOptions = {
 	after?: number;
 	onActivity?: () => void;
+	onCursor?: (seq: number) => void;
 	onEvent: (event: AppEvent) => void;
+	replay?: boolean;
 	signal?: AbortSignal;
 };
 
@@ -283,6 +289,16 @@ export class WebApiClient {
 
 	async getThread(threadId: string): Promise<ThreadDetailResponse> {
 		return this.requestJson(`/v1/threads/${threadId}`, threadDetailResponseSchema);
+	}
+
+	async updateThreadPermissionMode(
+		threadId: string,
+		request: ThreadPermissionModeUpdateRequest,
+	): Promise<ThreadDetailResponse> {
+		return this.requestJson(`/v1/threads/${threadId}/permission-mode`, threadDetailResponseSchema, {
+			body: request,
+			method: "PATCH",
+		});
 	}
 
 	async listThreadArtifacts(threadId: string): Promise<SessionArtifactListResponse> {
@@ -385,6 +401,19 @@ export class WebApiClient {
 
 	async updatePrivacySettings(request: PrivacySettingsUpdateRequest): Promise<PrivacySettings> {
 		return this.requestJson("/v1/settings/privacy", privacySettingsSchema, {
+			body: request,
+			method: "PATCH",
+		});
+	}
+
+	async getAgentAccountPolicy(): Promise<AgentAccountPolicyResponse> {
+		return this.requestJson("/v1/agent/account-policy", agentAccountPolicyResponseSchema);
+	}
+
+	async updateAgentAccountPolicy(
+		request: AgentAccountPolicyUpdateRequest,
+	): Promise<AgentAccountPolicyResponse> {
+		return this.requestJson("/v1/agent/account-policy", agentAccountPolicyResponseSchema, {
 			body: request,
 			method: "PATCH",
 		});
@@ -1003,16 +1032,44 @@ export class WebApiClient {
 		if (options.after !== undefined) {
 			params.set("after", String(options.after));
 		}
+		if (options.replay === false) {
+			params.set("replay", "0");
+		}
 
 		const suffix = params.toString() ? `?${params.toString()}` : "";
-		await readSseStream({
-			headers: await this.authHeaders(),
-			onActivity: options.onActivity,
-			onEvent: options.onEvent,
-			schema: appEventSchema,
-			signal: options.signal,
-			url: this.url(`/v1/events${suffix}`),
-		});
+		try {
+			await readSseStream({
+				headers: await this.authHeaders(),
+				onActivity: options.onActivity,
+				onEvent: options.onEvent,
+				onOpen(response) {
+					const cursor = response.headers.get("x-unison-app-event-cursor");
+					if (!cursor) {
+						return;
+					}
+
+					const seq = Number(cursor);
+					if (Number.isFinite(seq) && seq >= 0) {
+						options.onCursor?.(Math.floor(seq));
+					}
+				},
+				schema: appEventSchema,
+				signal: options.signal,
+				url: this.url(`/v1/events${suffix}`),
+			});
+		} catch (error) {
+			if (error instanceof SseRequestError) {
+				if (error.status === 401) {
+					this.onUnauthorized?.();
+				}
+				throw new WebApiError(
+					error.detail ?? `SSE request failed with status ${error.status}.`,
+					error.status,
+				);
+			}
+
+			throw error;
+		}
 	}
 
 	private async requestJson<T>(
@@ -1089,6 +1146,7 @@ export class WebApiClient {
 		const token = await this.getToken();
 
 		if (!token) {
+			this.onUnauthorized?.();
 			throw new WebApiError("A bearer token is required.", 401);
 		}
 

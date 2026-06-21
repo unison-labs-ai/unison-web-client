@@ -1,9 +1,9 @@
 import { z } from "zod";
-
 import {
 	agentToolPermissionDecisionSchema,
 	agentToolSideEffectClassSchema,
 	connectionProviderSchema,
+	executionModeSchema,
 	isoDateTimeSchema,
 	metadataSchema,
 	paginationResponseSchema,
@@ -95,6 +95,7 @@ export const apiErrorCodeSchema = z.enum([
 	"forbidden",
 	"not_found",
 	"conflict",
+	"thread_busy",
 	"rate_limited",
 	"validation_failed",
 	"internal_error",
@@ -525,6 +526,7 @@ export const sessionSchema = z.object({
 	type: threadTypeSchema,
 	origin: threadOriginSchema.default("user"),
 	captureId: uuidSchema.nullable(),
+	permissionMode: executionModeSchema.default("human_in_the_loop"),
 	title: z.string().nullable(),
 	status: threadStatusSchema,
 	lastMessageAt: isoDateTimeSchema.nullable(),
@@ -536,8 +538,37 @@ export const sessionSchema = z.object({
 export const threadCreateRequestSchema = z.object({
 	type: threadTypeSchema.default("freeform"),
 	captureId: uuidSchema.optional(),
+	permissionMode: executionModeSchema.optional(),
 	title: z.string().trim().min(1).max(160).optional(),
 	metadata: metadataSchema.default({}),
+});
+
+export const chatPermissionModeSchema = executionModeSchema;
+
+export const agentAccountPolicySchema = z.object({
+	tenantId: uuidSchema,
+	userId: uuidSchema,
+	chatComposerMode: executionModeSchema,
+	metadata: metadataSchema,
+	createdAt: isoDateTimeSchema,
+	updatedAt: isoDateTimeSchema,
+});
+
+export const agentAccountPolicyUpdateRequestSchema = z
+	.object({
+		chatComposerMode: executionModeSchema.optional(),
+		metadata: metadataSchema.optional(),
+	})
+	.refine((value) => value.chatComposerMode !== undefined || value.metadata !== undefined, {
+		message: "At least one account policy field must be provided.",
+	});
+
+export const agentAccountPolicyResponseSchema = z.object({
+	policy: agentAccountPolicySchema,
+});
+
+export const threadPermissionModeUpdateRequestSchema = z.object({
+	permissionMode: chatPermissionModeSchema,
 });
 
 export const sessionSourceSchema = z.object({
@@ -740,6 +771,7 @@ export const agentToolPermissionUpdateRequestSchema = z.object({
 
 export const agentToolApprovalDecisionRequestSchema = z.object({
 	decision: z.enum(["approve", "reject"]),
+	escalate: z.literal("always_allow").optional(),
 	note: z.string().trim().min(1).max(1000).optional(),
 });
 
@@ -780,12 +812,14 @@ export const toolUserAvailabilitySchema = z.object({
 export const toolCatalogEntrySchema = z.object({
 	auditRedaction: z.object({ fields: z.array(z.string()) }).optional(),
 	availability: z.enum(["available", "beta", "disabled"]),
+	canAlwaysAllow: z.boolean().default(true),
 	category: z.string().min(1),
 	defaultPermission: agentToolPermissionDecisionSchema,
 	description: z.string().min(1),
 	displayGroup: z.string().nullable(),
 	name: z.string().min(1),
 	origin: z.enum(["connector", "engine", "internal"]),
+	outboundDelivery: z.enum(["always", "input_dependent", "never"]).default("never"),
 	parameters: metadataSchema,
 	policyMode: toolPolicyModeSchema,
 	requiredConnection: z.string().nullable(),
@@ -845,6 +879,7 @@ export const threadMessageCreateRequestSchema = z
 		clientMessageId: z.string().trim().min(1).max(200).optional(),
 		content: z.string().trim().max(8000).default(""),
 		attachments: z.array(attachmentCreateSchema).max(4).default([]),
+		permissionMode: chatPermissionModeSchema.optional(),
 	})
 	.refine((value) => value.content.length > 0 || value.attachments.length > 0, {
 		message: "Message content or at least one attachment is required.",
@@ -897,6 +932,9 @@ export const threadMessageStreamEventSchema = z.discriminatedUnion("type", [
 		// The tool's arguments, capped server-side. Drives the card's target/args
 		// summary on the client. Optional so historical events still parse.
 		input: metadataSchema.optional(),
+		// Provider-specific tool-call metadata, e.g. Gemini thought signatures,
+		// carried only so model history can be replayed faithfully.
+		providerOptions: metadataSchema.optional(),
 		index: z.number().int().min(0),
 	}),
 	z.object({
@@ -1030,6 +1068,7 @@ export type ThreadOrigin = z.infer<typeof threadOriginSchema>;
 export type ThreadStatus = z.infer<typeof threadStatusSchema>;
 export type SessionSourceKind = z.infer<typeof sessionSourceKindSchema>;
 export type SessionSourceRole = z.infer<typeof sessionSourceRoleSchema>;
+export type ChatPermissionMode = z.infer<typeof chatPermissionModeSchema>;
 export type Session = z.infer<typeof sessionSchema>;
 export type SessionSource = z.infer<typeof sessionSourceSchema>;
 export type SessionSourceListResponse = z.infer<typeof sessionSourceListResponseSchema>;
@@ -1046,8 +1085,14 @@ export type WebSource = z.infer<typeof webSourceSchema>;
 export type WebSourceListResponse = z.infer<typeof webSourceListResponseSchema>;
 export type AgentRunTrigger = z.infer<typeof agentRunTriggerSchema>;
 export type ThreadCreateRequest = z.infer<typeof threadCreateRequestSchema>;
+export type ThreadPermissionModeUpdateRequest = z.infer<
+	typeof threadPermissionModeUpdateRequestSchema
+>;
 export type ThreadListResponse = z.infer<typeof threadListResponseSchema>;
 export type ThreadDetailResponse = z.infer<typeof threadDetailResponseSchema>;
+export type AgentAccountPolicy = z.infer<typeof agentAccountPolicySchema>;
+export type AgentAccountPolicyUpdateRequest = z.infer<typeof agentAccountPolicyUpdateRequestSchema>;
+export type AgentAccountPolicyResponse = z.infer<typeof agentAccountPolicyResponseSchema>;
 export type AgentRunStatus = z.infer<typeof agentRunStatusSchema>;
 export type AgentRun = z.infer<typeof agentRunSchema>;
 export type AgentToolApprovalStatus = z.infer<typeof agentToolApprovalStatusSchema>;

@@ -8,4 +8,5 @@ export {
 	type ReadSseStreamOptions,
 	readSseStream,
 	SseParseError,
+	SseRequestError,
 } from "@unison/client-core";

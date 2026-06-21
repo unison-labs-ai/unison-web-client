@@ -20,6 +20,7 @@ const BRIDGE_TOOL_NAMES = new Set(["load_toolset", "tool_search", "tool_call"]);
 const SPECIAL_TOOLSET: Record<string, string> = {
 	"code.run": "sandbox",
 	"memory.remember": "memory",
+	present_options: "automation",
 	"scheduledSession.create": "scheduled_session",
 	"sourceEvent.get": "capture",
 };
@@ -151,6 +152,7 @@ export const TOOL_ROW_LABEL: Record<string, string> = {
 	"automation.dryRun": "Tested an automation",
 	"automation.test": "Tested an automation",
 	"automation.call": "Ran an automation",
+	present_options: "Asked you to choose",
 	"memory.remember": "Updated memory",
 	load_toolset: "Loaded tools",
 	tool_search: "Found tools",
