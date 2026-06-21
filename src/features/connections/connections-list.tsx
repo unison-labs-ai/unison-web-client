@@ -92,7 +92,6 @@ const PROVIDER_CAPABILITIES: Record<string, string> = {
 	salesforce: "Leads and opportunities",
 	slack: "Channels and messages",
 	stripe: "Payments and customers",
-	telegram: "Messages you send the bot",
 	trello: "Boards and cards",
 	zendesk: "Tickets and customers",
 };

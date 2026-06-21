@@ -53,7 +53,10 @@ jobs:
 
   deploy-staging:
     name: Deploy → staging
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    # Deploys are OFF until the repo variable DEPLOY_ENABLED is set to 'true'.
+    # Until then, merging to main runs checks only — it does NOT deploy to staging.
+    # Flip it on at cutover:  gh variable set DEPLOY_ENABLED --body true
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ENABLED == 'true' }}
     needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -95,7 +98,7 @@ jobs:
 
   deploy-production:
     name: Deploy → production
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/prod' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/prod' && vars.DEPLOY_ENABLED == 'true' }}
     needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 20

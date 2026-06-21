@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
 	AgentToolPermission,
 	AgentToolPermissionDecision,
-	AgentToolSideEffectClass,
 	ToolCatalogEntryWithAvailability,
 	ToolPolicyMode,
 } from "@unison/contracts";
@@ -29,50 +28,8 @@ const PERMISSION_OPTIONS: { label: string; value: AgentToolPermissionDecision }[
 	{ label: "Deny", value: "always_reject" },
 ];
 
-/**
- * Least → most dangerous. Mirrors the declaration order of
- * agentToolSideEffectClassSchema in @unison/contracts.
- */
-const SIDE_EFFECT_CLASS_ORDER: AgentToolSideEffectClass[] = [
-	"read",
-	"internal_write",
-	"external_draft",
-	"external_send",
-	"external_write",
-	"destructive",
-];
-
-const SIDE_EFFECT_CLASS_COPY: Record<
-	AgentToolSideEffectClass,
-	{ description: string; label: string }
-> = {
-	destructive: {
-		description: "Permanently deletes or overwrites data. The hardest actions to undo.",
-		label: "Destructive",
-	},
-	external_draft: {
-		description: "Prepares drafts in connected services. Nothing is sent or published.",
-		label: "External draft",
-	},
-	external_send: {
-		description: "Sends messages to other people through connected services, on your behalf.",
-		label: "External send",
-	},
-	external_write: {
-		description: "Creates or changes data in connected external services.",
-		label: "External write",
-	},
-	internal_write: {
-		description: "Creates or edits data inside your Unison workspace. Nothing leaves Unison.",
-		label: "Internal write",
-	},
-	read: {
-		description: "Looks things up. Reads your data without changing anything.",
-		label: "Read",
-	},
-};
-
 type PermissionRowModel = {
+	canAlwaysAllow: boolean;
 	description: string | null;
 	/** Saved permission for a tool that is no longer in the catalog. */
 	isOrphan: boolean;
@@ -89,6 +46,29 @@ type PermissionGroup = {
 	rows: PermissionRowModel[];
 };
 
+const TOOLSET_LABELS: Record<string, string> = {
+	artifact: "Artifacts",
+	brain: "Brain",
+	calendar: "Calendar",
+	capture: "Captures",
+	docs: "Docs",
+	drive: "Drive",
+	email: "Email drafts",
+	gmail: "Gmail",
+	memory: "Memory",
+	notification: "Notifications",
+	people: "People",
+	reminder: "Reminders",
+	sandbox: "Code",
+	scheduled_session: "Scheduling",
+	sheets: "Sheets",
+	web: "Web",
+};
+
+function titleizeToolset(id: string): string {
+	return TOOLSET_LABELS[id] ?? id.charAt(0).toUpperCase() + id.slice(1).replaceAll("_", " ");
+}
+
 /**
  * Joins the tool catalog with the per-user permission rows. Catalog tools
  * without an override render at their catalog default (the PUT endpoint
@@ -101,11 +81,12 @@ function buildGroups(
 	permissions: AgentToolPermission[],
 ): PermissionGroup[] {
 	const permissionByTool = new Map(permissions.map((row) => [row.toolName, row]));
-	const rowsByClass = new Map<AgentToolSideEffectClass, PermissionRowModel[]>();
+	const groupsByToolset = new Map<string, PermissionGroup>();
 
 	for (const tool of tools) {
 		const override = permissionByTool.get(tool.name);
 		const row: PermissionRowModel = {
+			canAlwaysAllow: tool.canAlwaysAllow,
 			description: tool.description,
 			isOrphan: false,
 			permission: override?.permission ?? tool.defaultPermission,
@@ -113,9 +94,14 @@ function buildGroups(
 			title: tool.title || tool.name,
 			toolName: tool.name,
 		};
-		const rows = rowsByClass.get(tool.sideEffectClass) ?? [];
-		rows.push(row);
-		rowsByClass.set(tool.sideEffectClass, rows);
+		const group = groupsByToolset.get(tool.toolsetId) ?? {
+			description: `Default permissions for ${tool.displayGroup ?? titleizeToolset(tool.toolsetId)} tools.`,
+			key: tool.toolsetId,
+			label: tool.displayGroup ?? titleizeToolset(tool.toolsetId),
+			rows: [],
+		};
+		group.rows.push(row);
+		groupsByToolset.set(tool.toolsetId, group);
 	}
 
 	const catalogNames = new Set(tools.map((tool) => tool.name));
@@ -123,6 +109,7 @@ function buildGroups(
 		.filter((row) => !catalogNames.has(row.toolName))
 		.map(
 			(row): PermissionRowModel => ({
+				canAlwaysAllow: true,
 				description: null,
 				isOrphan: true,
 				permission: row.permission,
@@ -132,20 +119,11 @@ function buildGroups(
 			}),
 		);
 
-	const groups: PermissionGroup[] = [];
-	for (const sideEffectClass of SIDE_EFFECT_CLASS_ORDER) {
-		const rows = rowsByClass.get(sideEffectClass);
-		if (!rows || rows.length === 0) {
-			continue;
-		}
-		rows.sort((a, b) => a.title.localeCompare(b.title));
-		groups.push({
-			description: SIDE_EFFECT_CLASS_COPY[sideEffectClass].description,
-			key: sideEffectClass,
-			label: SIDE_EFFECT_CLASS_COPY[sideEffectClass].label,
-			rows,
-		});
+	const groups = [...groupsByToolset.values()];
+	for (const group of groups) {
+		group.rows.sort((a, b) => a.title.localeCompare(b.title));
 	}
+	groups.sort((a, b) => a.label.localeCompare(b.label));
 
 	if (orphanRows.length > 0) {
 		orphanRows.sort((a, b) => a.title.localeCompare(b.title));
@@ -160,7 +138,7 @@ function buildGroups(
 	return groups;
 }
 
-function FloorNote({ text }: { text: string }) {
+function PolicyNote({ text }: { text: string }) {
 	return (
 		<span
 			style={{
@@ -190,7 +168,7 @@ function PermissionRow({ row }: { row: PermissionRowModel }) {
 	});
 
 	const isFixed = row.policyMode === "fixed";
-	const isApprovalFloor = row.policyMode === "required";
+	const blocksAlwaysAllow = !row.canAlwaysAllow || row.policyMode === "required";
 	// Orphan rows are read-only: the PUT endpoint 400s on tool names that are
 	// not in the current catalog, so offering the buttons would only fail.
 	const isReadOnly = isFixed || row.isOrphan;
@@ -199,15 +177,13 @@ function PermissionRow({ row }: { row: PermissionRowModel }) {
 		<GroupRow description={row.description ?? undefined} title={row.title}>
 			<SegmentedControl
 				disabled={updateMutation.isPending || isReadOnly}
-				// "required" tools must at least ask for approval, so the only
-				// option below the floor is autonomous Allow.
-				isOptionDisabled={(value) => isApprovalFloor && value === "always_allow"}
+				isOptionDisabled={(value) => blocksAlwaysAllow && value === "always_allow"}
 				onChange={(value) => void updateMutation.mutate(value)}
 				options={PERMISSION_OPTIONS}
 				value={row.permission}
 			/>
-			{isFixed && <FloorNote text="Fixed — security floor" />}
-			{isApprovalFloor && <FloorNote text="Floor: approval required" />}
+			{isFixed && <PolicyNote text="Fixed tool" />}
+			{!isFixed && blocksAlwaysAllow && <PolicyNote text="Always allow unavailable" />}
 			{row.isOrphan && (
 				<span style={{ color: "var(--ink-subtle)", fontSize: "11px" }}>
 					Unknown tool — not in the current catalog
@@ -258,7 +234,7 @@ export function PermissionsPage() {
 	return (
 		<PageFade>
 			<PageSection
-				description="Per-tool autonomy, grouped by side-effect class. These defaults apply to all sessions and automations; security floors cannot be loosened."
+				description="Per-tool defaults grouped by integration. Sends and other outbound-delivery calls still ask at runtime when the resolver requires it."
 				title="Default tool permissions"
 			>
 				{isLoading && <GroupCardSkeleton controlWidth={230} rows={4} />}

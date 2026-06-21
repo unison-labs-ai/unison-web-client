@@ -2,6 +2,7 @@
 
 import type { Session } from "@unison/contracts";
 import Link from "next/link";
+import { useLiveSessions } from "@/lib/app-events-provider";
 import { relativeTime } from "@/lib/relative-time";
 import { usePrefetchThread } from "@/lib/thread-cache";
 
@@ -13,10 +14,10 @@ const ORIGIN_LABELS: Record<string, string> = {
 	user: "Chat",
 };
 
-// No live indicator: session.status is the lifecycle enum (open/archived/
-// deleted), not mid-turn state — a real presence signal needs backend support.
 export function SessionRow({ session }: { session: Session }) {
 	const lastAt = session.lastMessageAt ?? session.updatedAt ?? session.createdAt;
+	const liveSessions = useLiveSessions();
+	const isLive = liveSessions.has(session.id);
 	// Warm the thread + message caches on intent — Link's own prefetch only
 	// covers the route shell; this covers the data so the open paints full.
 	const prefetch = usePrefetchThread(session.id);
@@ -60,6 +61,12 @@ export function SessionRow({ session }: { session: Session }) {
 			<span className="type-extrasmall" style={{ color: "var(--ink-subtle)", flexShrink: 0 }}>
 				{relativeTime(lastAt)}
 			</span>
+			{isLive ? (
+				<span
+					className="h-1.5 w-1.5 shrink-0 rounded-pill"
+					style={{ background: "var(--sky-foreground)" }}
+				/>
+			) : null}
 		</Link>
 	);
 }

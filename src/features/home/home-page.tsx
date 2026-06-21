@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { HomeSectionId } from "@unison/contracts";
+import type { AgentToolApprovalDecisionRequest, HomeSectionId } from "@unison/contracts";
 import { Ellipsis } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -32,11 +32,11 @@ function PendingApprovalsBlock() {
 	const decideMutation = useMutation({
 		mutationFn: ({
 			approvalId,
-			decision,
+			request,
 		}: {
 			approvalId: string;
-			decision: "approve" | "reject";
-		}) => api.decideApproval(approvalId, { decision }),
+			request: AgentToolApprovalDecisionRequest;
+		}) => api.decideApproval(approvalId, request),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: ["approvals"] });
 		},
@@ -93,7 +93,7 @@ function PendingApprovalsBlock() {
 						<ApprovalCard
 							approval={approval}
 							key={approval.id}
-							onDecide={(decision) => decideMutation.mutate({ approvalId: approval.id, decision })}
+							onDecide={(request) => decideMutation.mutate({ approvalId: approval.id, request })}
 						/>
 					))}
 					{decideMutation.isError && (

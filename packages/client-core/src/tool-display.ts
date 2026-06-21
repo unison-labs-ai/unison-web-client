@@ -20,6 +20,7 @@ const BRIDGE_TOOL_NAMES = new Set(["load_toolset", "tool_search", "tool_call"]);
 const SPECIAL_TOOLSET: Record<string, string> = {
 	"code.run": "sandbox",
 	"memory.remember": "memory",
+	present_options: "automation",
 	"scheduledSession.create": "scheduled_session",
 	"sourceEvent.get": "capture",
 };
@@ -31,7 +32,6 @@ export const TOOLSET_GROUP_LABEL: Record<string, string> = {
 	brain: "Used brain",
 	calendar: "Used Calendar integration",
 	capture: "Reviewed captures",
-	clickup: "Used ClickUp integration",
 	docs: "Used Google Docs",
 	document: "Worked on documents",
 	drive: "Used Google Drive",
@@ -47,7 +47,6 @@ export const TOOLSET_GROUP_LABEL: Record<string, string> = {
 	scheduled_session: "Scheduled a session",
 	sheets: "Used Google Sheets",
 	skill: "Loaded a skill",
-	telegram: "Used Telegram integration",
 	web: "Searched the web",
 	bridge: "Loaded tools",
 };
@@ -107,20 +106,6 @@ export const TOOL_ROW_LABEL: Record<string, string> = {
 	"connector.linear.projects.save": "Saved a Linear project",
 	"connector.linear.issues.createLabel": "Created an issue label",
 	"connector.linear.projects.saveStatusUpdate": "Posted a status update",
-	"connector.clickup.tasks.list": "Listed ClickUp tasks",
-	"connector.clickup.tasks.get": "Read a ClickUp task",
-	"connector.clickup.spaces.list": "Listed ClickUp spaces",
-	"connector.clickup.lists.get": "Read a ClickUp list",
-	"connector.clickup.teams.list": "Listed ClickUp workspaces",
-	"connector.clickup.members.list": "Listed ClickUp members",
-	"connector.clickup.tasks.create": "Created a ClickUp task",
-	"connector.clickup.tasks.update": "Updated a ClickUp task",
-	"connector.clickup.comments.create": "Posted a ClickUp comment",
-	"connector.clickup.tasks.delete": "Deleted a ClickUp task",
-	"telegram.send_message": "Sent a Telegram message",
-	"telegram.send_document": "Sent a Telegram document",
-	"telegram.send_photo": "Sent a Telegram photo",
-	"telegram.get_chat": "Read a Telegram chat",
 	"artifact.create": "Created an artifact",
 	"artifact.update": "Updated an artifact",
 	"artifact.appendTableRows": "Updated a table",
@@ -151,6 +136,7 @@ export const TOOL_ROW_LABEL: Record<string, string> = {
 	"automation.dryRun": "Tested an automation",
 	"automation.test": "Tested an automation",
 	"automation.call": "Ran an automation",
+	present_options: "Asked you to choose",
 	"memory.remember": "Updated memory",
 	load_toolset: "Loaded tools",
 	tool_search: "Found tools",
@@ -177,9 +163,6 @@ export function toolsetForTool(name: string): string {
 	}
 	if (name.startsWith("connector.linear.")) {
 		return "linear";
-	}
-	if (name.startsWith("connector.clickup.")) {
-		return "clickup";
 	}
 	if (name.startsWith("email.draft.")) {
 		return "email";

@@ -31,6 +31,9 @@ const draftId = (output: Record<string, unknown> | undefined) =>
 const artifactId = (output: Record<string, unknown> | undefined) =>
 	stringValue(recordValue(output?.artifact), "id") ?? null;
 
+const automationId = (output: Record<string, unknown> | undefined) =>
+	stringValue(recordValue(output?.automation), "id") ?? null;
+
 export const MODULE_TOOLS: Record<string, ModuleToolSpec> = {
 	"artifact.create": {
 		idFromOutput: artifactId,
@@ -70,6 +73,17 @@ export const MODULE_TOOLS: Record<string, ModuleToolSpec> = {
 		idFromOutput: draftId,
 		isEdit: true,
 		kind: "email",
+	},
+	"automation.create": {
+		idFromOutput: automationId,
+		isEdit: false,
+		kind: "automation",
+	},
+	"automation.update": {
+		idFromInput: (input) => stringValue(input, "automationId") ?? null,
+		idFromOutput: automationId,
+		isEdit: true,
+		kind: "automation",
 	},
 };
 

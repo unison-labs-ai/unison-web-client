@@ -1,6 +1,8 @@
 import {
 	type AccountDeleteResponse,
 	type AccountRequestResponse,
+	type AgentAccountPolicyResponse,
+	type AgentAccountPolicyUpdateRequest,
 	type AgentToolApproval,
 	type AgentToolApprovalActionResponse,
 	type AgentToolApprovalDecisionRequest,
@@ -35,6 +37,7 @@ import {
 	type AutomationWithRelations,
 	accountDeleteResponseSchema,
 	accountRequestResponseSchema,
+	agentAccountPolicyResponseSchema,
 	agentToolApprovalActionResponseSchema,
 	agentToolApprovalListResponseSchema,
 	agentToolPermissionActionResponseSchema,
@@ -148,6 +151,7 @@ import {
 	type ThreadMessageListResponse,
 	type ThreadMessageSendResponse,
 	type ThreadMessageStreamEvent,
+	type ThreadPermissionModeUpdateRequest,
 	type ToolCatalogResponse,
 	type TranscriptionRealtimeTokenResponse,
 	threadDetailResponseSchema,
@@ -285,6 +289,16 @@ export class WebApiClient {
 		return this.requestJson(`/v1/threads/${threadId}`, threadDetailResponseSchema);
 	}
 
+	async updateThreadPermissionMode(
+		threadId: string,
+		request: ThreadPermissionModeUpdateRequest,
+	): Promise<ThreadDetailResponse> {
+		return this.requestJson(`/v1/threads/${threadId}/permission-mode`, threadDetailResponseSchema, {
+			body: request,
+			method: "PATCH",
+		});
+	}
+
 	async listThreadArtifacts(threadId: string): Promise<SessionArtifactListResponse> {
 		return this.requestJson(`/v1/threads/${threadId}/artifacts`, sessionArtifactListResponseSchema);
 	}
@@ -385,6 +399,19 @@ export class WebApiClient {
 
 	async updatePrivacySettings(request: PrivacySettingsUpdateRequest): Promise<PrivacySettings> {
 		return this.requestJson("/v1/settings/privacy", privacySettingsSchema, {
+			body: request,
+			method: "PATCH",
+		});
+	}
+
+	async getAgentAccountPolicy(): Promise<AgentAccountPolicyResponse> {
+		return this.requestJson("/v1/agent/account-policy", agentAccountPolicyResponseSchema);
+	}
+
+	async updateAgentAccountPolicy(
+		request: AgentAccountPolicyUpdateRequest,
+	): Promise<AgentAccountPolicyResponse> {
+		return this.requestJson("/v1/agent/account-policy", agentAccountPolicyResponseSchema, {
 			body: request,
 			method: "PATCH",
 		});

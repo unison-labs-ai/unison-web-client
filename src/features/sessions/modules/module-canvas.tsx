@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/ui/dro
 import { moduleIcon } from "./module-icon";
 import { useModules } from "./modules-context";
 import type { Module } from "./types";
+import { AutomationModuleView } from "./views/automation-module";
 import { DocumentModuleView } from "./views/document-module";
 import { EmailModuleView } from "./views/email-module";
 import { OverviewModuleView } from "./views/overview-module";
@@ -30,7 +31,8 @@ export function ModuleCanvas() {
 		<div className="flex min-h-0 flex-1 flex-col bg-surface-muted">
 			{/* Email/overview/transcript manage their own header; document/report get
 			    the shared title + actions row. */}
-			{activeModule.kind === "email" ||
+			{activeModule.kind === "automation" ||
+			activeModule.kind === "email" ||
 			activeModule.kind === "overview" ||
 			activeModule.kind === "transcript" ? null : (
 				<ModuleHeader module={activeModule} />
@@ -42,6 +44,8 @@ export function ModuleCanvas() {
 
 function ModuleView({ module }: { module: Module }) {
 	switch (module.kind) {
+		case "automation":
+			return <AutomationModuleView module={module} />;
 		case "document":
 			return <DocumentModuleView module={module} />;
 		case "email":

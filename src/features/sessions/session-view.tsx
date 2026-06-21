@@ -2,16 +2,20 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
+	AgentToolApprovalDecisionRequest,
+	AppEvent,
 	Session,
 	ThreadMessage,
 	ThreadMessageListResponse,
 	ThreadMessageSendResponse,
 	ThreadMessageStreamEvent,
 } from "@unison/contracts";
+import { threadMessageSchema, threadMessageStreamEventSchema } from "@unison/contracts";
 import { Files, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useApi } from "@/lib/api-context";
+import { sessionIdFor, useAppEvents } from "@/lib/app-events-provider";
 import { buildTranscriptTurns, mergeThreadMessages } from "@/lib/session-transcript";
 import { mergeStreamEventRecord, type StreamEventRecord } from "@/lib/stream-events";
 import {
@@ -20,7 +24,6 @@ import {
 	threadMessagesQueryKey,
 	threadQueryKey,
 } from "@/lib/thread-cache";
-import { useThreadStream } from "@/lib/use-thread-stream";
 import { ApprovalCard } from "@/ui/approval-card";
 import { Breadcrumb } from "@/ui/breadcrumb";
 import { Button } from "@/ui/button";
@@ -30,6 +33,8 @@ import { ModulesProvider, OVERVIEW_MODULE_ID, useModules } from "./modules/modul
 import { SessionComposer } from "./session-composer";
 import { SessionViewSkeleton, TranscriptSkeleton } from "./session-skeleton";
 import { noticeFromStreamEvent, Transcript, type TurnNotice } from "./transcript";
+
+const TITLE_PENDING_REFETCH_MS = 1_500;
 
 /** The agent-run id of the in-flight turn, or null when no turn is live.
  * Derived the way mobile does it: from the send 202 (`session.id`) and from a
@@ -47,6 +52,34 @@ function liveTurnIdFromMessages(messages: ThreadMessage[]): string | null {
 		}
 	}
 	return null;
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
+}
+
+function payloadString(payload: Record<string, unknown>, key: string): string | null {
+	const value = payload[key];
+	return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function appEventMessage(event: AppEvent): ThreadMessage | null {
+	const parsed = threadMessageSchema.safeParse(event.payload.message);
+	return parsed.success ? parsed.data : null;
+}
+
+function hasPendingTitleGeneration(session: Session): boolean {
+	const titleGeneration = recordValue(recordValue(session.metadata).titleGeneration);
+	return titleGeneration.status === "pending";
+}
+
+class StaleThreadMessagesLoadError extends Error {}
+
+function streamEventFromAppEvent(event: AppEvent): ThreadMessageStreamEvent | null {
+	const parsed = threadMessageStreamEventSchema.safeParse(event.payload);
+	return parsed.success ? parsed.data : null;
 }
 
 // The header's single right-side action: open this session's artifacts overview
@@ -75,8 +108,10 @@ function ArtifactsButton() {
 
 function SessionViewInner({ session }: { session: Session }) {
 	const api = useApi();
+	const appEvents = useAppEvents();
 	const queryClient = useQueryClient();
 	const bottomRef = useRef<HTMLDivElement>(null);
+	const processedAppEventSeqByThreadRef = useRef<Record<string, number>>({});
 
 	// First-turn handoff: when the home composer just created this thread, its
 	// send 202 already carries the full initial snapshot (user message +
@@ -96,9 +131,10 @@ function SessionViewInner({ session }: { session: Session }) {
 	// turns the way mobile does it: messages carry history, records carry the
 	// in-flight turn's chronological text/tool parts + the ephemeral activity
 	// line — and keep tool cards visible after the durable refresh.
-	const [messages, setMessages] = useState<ThreadMessage[]>(() =>
+	const [messages, setMessagesState] = useState<ThreadMessage[]>(() =>
 		handoff ? [handoff.userMessage, handoff.assistantMessage] : (seededMessages?.messages ?? []),
 	);
+	const messagesRef = useRef(messages);
 	const [records, setRecords] = useState<StreamEventRecord[]>([]);
 	// Abnormal turn endings, set on terminal events and cleared by the next send.
 	const [notice, setNotice] = useState<TurnNotice | null>(null);
@@ -106,9 +142,8 @@ function SessionViewInner({ session }: { session: Session }) {
 	// shows message bones then, never a false "No messages yet.".
 	const [messagesReady, setMessagesReady] = useState(Boolean(handoff) || Boolean(seededMessages));
 	const [messagesError, setMessagesError] = useState(false);
-	const [streamDegraded, setStreamDegraded] = useState(false);
-	// The agent-run id of the in-flight turn. The stream endpoint is per-turn and
-	// keyed by this id (NOT the thread id) — see api-usage.md §3 / wire protocol.
+	// The agent-run id of the in-flight turn. Used for targeted stop/approval state;
+	// live transcript updates come from the app-wide event stream.
 	const [liveTurnId, setLiveTurnId] = useState<string | null>(() =>
 		handoff
 			? handoff.session.id
@@ -126,31 +161,52 @@ function SessionViewInner({ session }: { session: Session }) {
 	// stale guard drops responses that resolve after a newer load started
 	// (back-navigation races).
 	const loadSeqRef = useRef(0);
+	const mergeMessages = useCallback((incoming: ThreadMessage[]) => {
+		const nextMessages = mergeThreadMessages(messagesRef.current, incoming);
+		messagesRef.current = nextMessages;
+		setMessagesState(nextMessages);
+		return nextMessages;
+	}, []);
 	const loadMessages = useCallback(
 		(opts?: { fresh?: boolean }) => {
 			const loadSeq = ++loadSeqRef.current;
 			setMessagesError(false);
 			queryClient
 				.fetchQuery({
-					queryFn: () => api.listThreadMessages(session.id),
+					queryFn: async () => {
+						const res = await api.listThreadMessages(session.id);
+						if (loadSeq !== loadSeqRef.current) {
+							throw new StaleThreadMessagesLoadError();
+						}
+						return res;
+					},
 					queryKey: threadMessagesQueryKey(session.id),
+					retry: (failureCount, loadError) =>
+						!(loadError instanceof StaleThreadMessagesLoadError) && failureCount < 3,
 					staleTime: opts?.fresh ? 0 : THREAD_MESSAGES_STALE_TIME,
 				})
 				.then((res) => {
 					if (loadSeq !== loadSeqRef.current) return;
-					// The durable snapshot is now the source of truth; a later remount
-					// must not re-seed the handoff's stale first-turn messages.
+					// The durable snapshot updates known rows, but messages are
+					// append-only: preserve a locally accepted queued turn if an older
+					// terminal refresh resolves late.
 					clearFirstTurn(session.id);
-					setMessages(res.messages);
+					const nextMessages = mergeMessages(res.messages);
 					setMessagesReady(true);
-					setLiveTurnId(liveTurnIdFromMessages(res.messages));
+					setLiveTurnId(liveTurnIdFromMessages(nextMessages));
+					queryClient.setQueryData<ThreadMessageListResponse>(threadMessagesQueryKey(session.id), {
+						...res,
+						messages: nextMessages,
+					});
 				})
-				.catch(() => {
-					if (loadSeq !== loadSeqRef.current) return;
+				.catch((loadError) => {
+					if (loadSeq !== loadSeqRef.current || loadError instanceof StaleThreadMessagesLoadError) {
+						return;
+					}
 					setMessagesError(true);
 				});
 		},
-		[api, queryClient, session.id],
+		[api, mergeMessages, queryClient, session.id],
 	);
 
 	useEffect(() => {
@@ -188,8 +244,8 @@ function SessionViewInner({ session }: { session: Session }) {
 		};
 	}, [api, handoff, session.id]);
 
-	// Streaming events. On a terminal event the turn is over: stop the stream,
-	// refresh the durable snapshot, and let the lists know (api-usage.md §4).
+	// Streaming events. On a terminal event the turn is over: refresh the durable
+	// snapshot, and let the lists know (api-usage.md §4).
 	const onEvent = useCallback(
 		(event: ThreadMessageStreamEvent) => {
 			// Fold every wire event into the records the turn model is built from;
@@ -198,7 +254,7 @@ function SessionViewInner({ session }: { session: Session }) {
 				mergeStreamEventRecord(prev, { event, receivedAt: new Date().toISOString() }),
 			);
 			if (event.type === "message.completed") {
-				setMessages((prev) => mergeThreadMessages(prev, [event.message]));
+				mergeMessages([event.message]);
 			}
 			if (event.type === "input.requested") {
 				void queryClient.invalidateQueries({ queryKey: ["approvals"] });
@@ -206,7 +262,6 @@ function SessionViewInner({ session }: { session: Session }) {
 			if (event.type === "session.completed" || event.type === "error") {
 				setNotice(noticeFromStreamEvent(event));
 				setLiveTurnId(null);
-				setStreamDegraded(false);
 				// The turn just changed the durable snapshot — a cached copy is stale
 				// by definition here.
 				loadMessages({ fresh: true });
@@ -214,39 +269,100 @@ function SessionViewInner({ session }: { session: Session }) {
 				void queryClient.invalidateQueries({ queryKey: ["thread", session.id] });
 			}
 		},
-		[loadMessages, queryClient, session.id],
+		[loadMessages, mergeMessages, queryClient, session.id],
 	);
 
-	const onConnectionChange = useCallback((connected: boolean) => {
-		setStreamDegraded(!connected);
-	}, []);
+	const applyAppEvent = useCallback(
+		(event: AppEvent) => {
+			const streamEvent = streamEventFromAppEvent(event);
 
-	useThreadStream({
-		enabled: liveTurnId !== null,
-		onConnectionChange,
-		onEvent,
-		sessionId: liveTurnId,
-		threadId: session.id,
-	});
+			if (streamEvent) {
+				onEvent(streamEvent);
+				return;
+			}
+
+			if (event.type === "turn.admitted" || event.type === "run.started") {
+				setNotice(null);
+				setLiveTurnId(
+					payloadString(event.payload, "sessionId") ?? payloadString(event.payload, "runId"),
+				);
+				return;
+			}
+
+			if (event.type === "message.created") {
+				const message = appEventMessage(event);
+
+				if (!message) {
+					return;
+				}
+
+				mergeMessages([message]);
+				setMessagesReady(true);
+
+				if (message.sessionId) {
+					setLiveTurnId(message.sessionId);
+				}
+			}
+		},
+		[mergeMessages, onEvent],
+	);
+
+	useEffect(() => {
+		const lastProcessed = processedAppEventSeqByThreadRef.current[session.id] ?? 0;
+		const relevantEvents = appEvents.events
+			.filter((event) => event.seq > lastProcessed && sessionIdFor(event) === session.id)
+			.sort((left, right) => left.seq - right.seq);
+
+		let nextProcessedSeq = lastProcessed;
+
+		for (const event of relevantEvents) {
+			nextProcessedSeq = Math.max(nextProcessedSeq, event.seq);
+			applyAppEvent(event);
+		}
+
+		processedAppEventSeqByThreadRef.current[session.id] = nextProcessedSeq;
+	}, [appEvents.events, applyAppEvent, session.id]);
 
 	// After a send, the 202 carries both messages and the new turn's run id.
 	const handleSendResponse = useCallback(
-		(res: ThreadMessageSendResponse) => {
+		async (res: ThreadMessageSendResponse) => {
+			loadSeqRef.current += 1;
+			await queryClient.cancelQueries({
+				exact: true,
+				queryKey: threadMessagesQueryKey(session.id),
+			});
+
 			setNotice(null);
-			setMessages((prev) => mergeThreadMessages(prev, [res.userMessage, res.assistantMessage]));
+			const nextMessages = mergeMessages([res.userMessage, res.assistantMessage]);
+			setMessagesReady(true);
 			// Keep the snapshot cache in step so a quick back-and-forth doesn't
 			// resurrect a pre-send message list.
-			queryClient.setQueryData<ThreadMessageListResponse>(
-				threadMessagesQueryKey(session.id),
-				(prev) =>
-					prev
-						? { ...prev, messages: [...prev.messages, res.userMessage, res.assistantMessage] }
-						: prev,
-			);
-			setStreamDegraded(false);
+			queryClient.setQueryData<ThreadMessageListResponse>(threadMessagesQueryKey(session.id), {
+				messages: nextMessages,
+				thread: res.thread,
+			});
 			setLiveTurnId(res.session.id);
 		},
-		[queryClient, session.id],
+		[mergeMessages, queryClient, session.id],
+	);
+
+	// present_options: tapping an option (e.g. Run now / Not now) sends its label
+	// back as the user's next message — the same send path the composer uses.
+	const handleSelectOption = useCallback(
+		async (text: string) => {
+			const content = text.trim();
+			if (!content) {
+				return;
+			}
+			const response = await api.sendThreadMessage(session.id, {
+				attachments: [],
+				clientMessageId: crypto.randomUUID(),
+				content,
+				permissionMode: session.permissionMode,
+			});
+			await handleSendResponse(response);
+		},
+		[api, handleSendResponse, session.id, session.permissionMode],
 	);
 
 	// Pending approvals for this session — rendered inline where the turn
@@ -276,11 +392,11 @@ function SessionViewInner({ session }: { session: Session }) {
 	const decideMutation = useMutation({
 		mutationFn: ({
 			approvalId,
-			decision,
+			request,
 		}: {
 			approvalId: string;
-			decision: "approve" | "reject";
-		}) => api.decideApproval(approvalId, { decision }),
+			request: AgentToolApprovalDecisionRequest;
+		}) => api.decideApproval(approvalId, request),
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: ["approvals"] });
 		},
@@ -336,22 +452,6 @@ function SessionViewInner({ session }: { session: Session }) {
 						<ArtifactsButton />
 					</div>
 
-					{/* Stream failure surface — shown while a live turn's connection is down */}
-					{streamDegraded && isLive && (
-						<div
-							className="type-extrasmall"
-							style={{
-								background: "var(--warning-soft)",
-								borderBottom: "1px solid var(--line)",
-								color: "var(--ink-subtle)",
-								flexShrink: 0,
-								padding: "4px 16px",
-							}}
-						>
-							Live updates interrupted — reconnecting…
-						</div>
-					)}
-
 					{/* Transcript canvas — readable column with a real composer dock. */}
 					<div
 						style={{
@@ -393,7 +493,7 @@ function SessionViewInner({ session }: { session: Session }) {
 										</Button>
 									</div>
 								) : messagesReady ? (
-									<Transcript turns={turns} />
+									<Transcript onSelectOption={handleSelectOption} turns={turns} />
 								) : (
 									<TranscriptSkeleton />
 								)}
@@ -429,8 +529,8 @@ function SessionViewInner({ session }: { session: Session }) {
 											<ApprovalCard
 												approval={approval}
 												key={approval.id}
-												onDecide={(decision) =>
-													decideMutation.mutate({ approvalId: approval.id, decision })
+												onDecide={(request) =>
+													decideMutation.mutate({ approvalId: approval.id, request })
 												}
 											/>
 										))}
@@ -462,6 +562,7 @@ function SessionViewInner({ session }: { session: Session }) {
 									isStreaming={isLive}
 									liveTurnId={liveTurnId}
 									onResponse={handleSendResponse}
+									permissionMode={session.permissionMode}
 									threadId={session.id}
 								/>
 							</div>
@@ -493,6 +594,20 @@ export function SessionView({ sessionId }: SessionViewProps) {
 		queryKey: threadQueryKey(sessionId),
 		staleTime: THREAD_STALE_TIME,
 	});
+
+	useEffect(() => {
+		if (!data?.thread || !hasPendingTitleGeneration(data.thread)) {
+			return;
+		}
+
+		const timer = setTimeout(() => {
+			void refetch();
+		}, TITLE_PENDING_REFETCH_MS);
+
+		return () => {
+			clearTimeout(timer);
+		};
+	}, [data?.thread, refetch]);
 
 	// Same bones as the route's loading.tsx — a cold thread fetch continues the
 	// exact frame the navigation painted, instead of swapping layouts.
