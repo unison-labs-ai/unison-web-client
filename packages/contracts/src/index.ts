@@ -59,6 +59,15 @@ export const GRANOLA_SCOPE = {
 	notesRead: "granola.notes:read",
 } as const;
 
+/** Telegram Bot API authenticates with a bot token (no OAuth, no per-user
+ * scopes). This internal scope tag keeps the requiredScopes array non-empty for
+ * connectors that need a consistent declared-scopes ⊆ requested-scopes check.
+ * Bot tokens carry all permissions granted when the bot was created — there is
+ * no per-scope grant flow. */
+export const TELEGRAM_SCOPE = {
+	botApi: "telegram.bot:api",
+} as const;
+
 export const healthzResponseSchema = z.object({
 	ok: z.literal(true),
 	service: z.enum(["api", "worker", "mobile"]),
@@ -1139,6 +1148,7 @@ export const sourceProviderSchema = z.enum([
 	"github",
 	"granola",
 	"system",
+	"telegram",
 ]);
 export const sourceEventTypeSchema = z.enum([
 	"gmail.message",
@@ -1147,6 +1157,7 @@ export const sourceEventTypeSchema = z.enum([
 	"linear.issue",
 	"github.notification",
 	"meeting.completed",
+	"message.received",
 	"reminder.due",
 	"capture.processed",
 	"system",

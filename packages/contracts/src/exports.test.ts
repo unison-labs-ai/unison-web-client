@@ -25,6 +25,7 @@ const expectedExports = [
 	"SKILL_DESCRIPTION_MAX_CHARS",
 	"SKILL_NAME_MAX_CHARS",
 	"SKILL_TITLE_MAX_CHARS",
+	"TELEGRAM_SCOPE",
 	"WORKING_MEMORY_CONTENT_MAX_CHARS",
 	"accountDeleteResponseSchema",
 	"accountRequestResponseSchema",

@@ -39,6 +39,14 @@ export const agentToolPermissionDecisionSchema = z.enum([
 export type AgentToolSideEffectClass = z.infer<typeof agentToolSideEffectClassSchema>;
 export type AgentToolPermissionDecision = z.infer<typeof agentToolPermissionDecisionSchema>;
 
-export const connectionProviderSchema = z.enum(["google", "slack", "linear", "github", "granola"]);
+export const connectionProviderSchema = z.enum([
+	"google",
+	"slack",
+	"linear",
+	"github",
+	"granola",
+	"clickup",
+	"telegram",
+]);
 
 export type ConnectionProvider = z.infer<typeof connectionProviderSchema>;
