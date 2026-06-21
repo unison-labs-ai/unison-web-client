@@ -134,6 +134,7 @@ export type ReadSseStreamOptions<T> = {
 	headers?: Record<string, string>;
 	onActivity?: () => void;
 	onEvent: (event: T) => void;
+	onOpen?: (response: Response) => void;
 	schema: z.ZodType<T>;
 	signal?: AbortSignal;
 	url: string;
@@ -155,6 +156,7 @@ export async function readSseStream<T>(options: ReadSseStreamOptions<T>): Promis
 		throw new SseRequestError(response.status, detail);
 	}
 
+	options.onOpen?.(response);
 	options.onActivity?.();
 
 	if (!response.body || !("getReader" in response.body)) {

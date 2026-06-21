@@ -49,6 +49,7 @@ describe("SSE parsing", () => {
 
 	it("reports activity when the stream opens before event data arrives", async () => {
 		let activityCount = 0;
+		const openedWithHeaders: Array<string | null> = [];
 		const fetchMock = installFetchMock({
 			fallthrough: "error",
 			routes: [
@@ -61,7 +62,13 @@ describe("SSE parsing", () => {
 									controller.close();
 								},
 							}),
-							{ headers: { "content-type": "text/event-stream" }, status: 200 },
+							{
+								headers: {
+									"content-type": "text/event-stream",
+									"x-unison-app-event-cursor": "7",
+								},
+								status: 200,
+							},
 						),
 				},
 			],
@@ -75,11 +82,15 @@ describe("SSE parsing", () => {
 				onEvent: () => {
 					throw new Error("Unexpected SSE event.");
 				},
+				onOpen: (response) => {
+					openedWithHeaders.push(response.headers.get("x-unison-app-event-cursor"));
+				},
 				schema: eventSchema,
 				url: "http://example.test/events",
 			});
 
 			expect(activityCount).toBe(1);
+			expect(openedWithHeaders).toEqual(["7"]);
 		} finally {
 			fetchMock.restore();
 		}

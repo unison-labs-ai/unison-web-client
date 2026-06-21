@@ -354,11 +354,13 @@ export function AppEventsProvider({ children }: PropsWithChildren) {
 	const [status, setStatus] = useState<AppEventConnectionStatus>("idle");
 	const [liveSessions, setLiveSessions] = useState<ReadonlySet<string>>(() => new Set());
 	const lastSeqRef = useRef(0);
+	const initialReplaySkippedRef = useRef(false);
 	const skipStream = isAuthPath(pathname);
 
 	useEffect(() => {
 		if (skipStream) {
 			lastSeqRef.current = 0;
+			initialReplaySkippedRef.current = false;
 			setEvents([]);
 			setLastSeq(0);
 			setStatus("idle");
@@ -389,15 +391,25 @@ export function AppEventsProvider({ children }: PropsWithChildren) {
 				try {
 					setStatus(lastSeqRef.current > 0 ? "reconnecting" : "connecting");
 					resetWatchdog();
+					const replay = initialReplaySkippedRef.current || lastSeqRef.current > 0;
 					await api.streamAppEvents({
 						after: lastSeqRef.current,
 						onActivity: resetWatchdog,
+						onCursor(seq) {
+							initialReplaySkippedRef.current = true;
+							if (seq > lastSeqRef.current) {
+								lastSeqRef.current = seq;
+								setLastSeq(seq);
+							}
+							setStatus("connected");
+						},
 						onEvent(event) {
 							if (event.seq <= lastSeqRef.current) {
 								return;
 							}
 
 							lastSeqRef.current = event.seq;
+							initialReplaySkippedRef.current = true;
 							setLastSeq(event.seq);
 							setStatus("connected");
 							setEvents((current) => {
@@ -407,6 +419,7 @@ export function AppEventsProvider({ children }: PropsWithChildren) {
 							setLiveSessions((current) => applyLiveEvent(current, event));
 							invalidateForAppEvent(queryClient, event);
 						},
+						replay,
 						signal: streamAbort.signal,
 					});
 					retryMs = 500;
@@ -414,6 +427,9 @@ export function AppEventsProvider({ children }: PropsWithChildren) {
 					if (error instanceof WebApiError && error.status === 401) {
 						setStatus("idle");
 						return;
+					}
+					if (error instanceof WebApiError && error.status === 429) {
+						retryMs = Math.max(retryMs, 60_000);
 					}
 					if (!cancelled && !lifecycleAbort.signal.aborted) {
 						setStatus("reconnecting");

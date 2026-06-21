@@ -686,4 +686,30 @@ describe("WebApiClient error handling", () => {
 		expect(unauthorizedCount).toBe(1);
 		expect(lastRequest().url).toBe("https://api.test/v1/events");
 	});
+
+	it("can open app-event streams without historical replay", async () => {
+		stubFetch(
+			new Response("", {
+				headers: {
+					"content-type": "text/event-stream",
+					"x-unison-app-event-cursor": "42",
+				},
+				status: 200,
+			}),
+		);
+		let cursor = 0;
+
+		await createClient().streamAppEvents({
+			onCursor: (seq) => {
+				cursor = seq;
+			},
+			onEvent: () => {
+				throw new Error("Unexpected SSE event.");
+			},
+			replay: false,
+		});
+
+		expect(cursor).toBe(42);
+		expect(lastRequest().url).toBe("https://api.test/v1/events?replay=0");
+	});
 });

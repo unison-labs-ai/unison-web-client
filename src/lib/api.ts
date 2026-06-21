@@ -193,7 +193,9 @@ type StreamThreadOptions = {
 type StreamAppEventsOptions = {
 	after?: number;
 	onActivity?: () => void;
+	onCursor?: (seq: number) => void;
 	onEvent: (event: AppEvent) => void;
+	replay?: boolean;
 	signal?: AbortSignal;
 };
 
@@ -1030,6 +1032,9 @@ export class WebApiClient {
 		if (options.after !== undefined) {
 			params.set("after", String(options.after));
 		}
+		if (options.replay === false) {
+			params.set("replay", "0");
+		}
 
 		const suffix = params.toString() ? `?${params.toString()}` : "";
 		try {
@@ -1037,6 +1042,17 @@ export class WebApiClient {
 				headers: await this.authHeaders(),
 				onActivity: options.onActivity,
 				onEvent: options.onEvent,
+				onOpen(response) {
+					const cursor = response.headers.get("x-unison-app-event-cursor");
+					if (!cursor) {
+						return;
+					}
+
+					const seq = Number(cursor);
+					if (Number.isFinite(seq) && seq >= 0) {
+						options.onCursor?.(Math.floor(seq));
+					}
+				},
 				schema: appEventSchema,
 				signal: options.signal,
 				url: this.url(`/v1/events${suffix}`),
