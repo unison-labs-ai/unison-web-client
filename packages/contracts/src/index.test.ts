@@ -90,6 +90,18 @@ describe("contracts", () => {
 			}).success,
 		).toBe(true);
 		expect(
+			threadMessageStreamEventSchema.safeParse({
+				type: "tool.started",
+				sessionId: "11111111-1111-4111-8111-111111111111",
+				turnId: "44444444-4444-4444-8444-444444444444",
+				toolCallId: "55555555-5555-4555-8555-555555555555",
+				toolName: "brain.search",
+				input: { query: "phase 3" },
+				providerOptions: { google: { thoughtSignature: "sig-1" } },
+				index: 2,
+			}).success,
+		).toBe(true);
+		expect(
 			appEventSchema.safeParse({
 				seq: 1,
 				type: "message.delta",

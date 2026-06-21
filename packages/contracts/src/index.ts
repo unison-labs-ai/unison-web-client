@@ -932,6 +932,9 @@ export const threadMessageStreamEventSchema = z.discriminatedUnion("type", [
 		// The tool's arguments, capped server-side. Drives the card's target/args
 		// summary on the client. Optional so historical events still parse.
 		input: metadataSchema.optional(),
+		// Provider-specific tool-call metadata, e.g. Gemini thought signatures,
+		// carried only so model history can be replayed faithfully.
+		providerOptions: metadataSchema.optional(),
 		index: z.number().int().min(0),
 	}),
 	z.object({

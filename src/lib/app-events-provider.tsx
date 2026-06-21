@@ -25,6 +25,7 @@ import {
 	useState,
 } from "react";
 
+import { WebApiError } from "@/lib/api";
 import { useApi } from "@/lib/api-context";
 import { threadMessagesQueryKey, threadQueryKey } from "@/lib/thread-cache";
 
@@ -409,7 +410,11 @@ export function AppEventsProvider({ children }: PropsWithChildren) {
 						signal: streamAbort.signal,
 					});
 					retryMs = 500;
-				} catch {
+				} catch (error) {
+					if (error instanceof WebApiError && error.status === 401) {
+						setStatus("idle");
+						return;
+					}
 					if (!cancelled && !lifecycleAbort.signal.aborted) {
 						setStatus("reconnecting");
 					}

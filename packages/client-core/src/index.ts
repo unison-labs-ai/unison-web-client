@@ -21,6 +21,7 @@ export {
 	type ReadSseStreamOptions,
 	readSseStream,
 	SseParseError,
+	SseRequestError,
 } from "./sse";
 export {
 	TOOL_ROW_LABEL,

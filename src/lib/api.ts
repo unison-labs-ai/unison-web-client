@@ -168,7 +168,7 @@ import {
 } from "@unison/contracts";
 import type { z } from "zod";
 
-import { readSseStream } from "./sse";
+import { readSseStream, SseRequestError } from "./sse";
 
 type RequestOptions = {
 	body?: unknown;
@@ -1032,14 +1032,28 @@ export class WebApiClient {
 		}
 
 		const suffix = params.toString() ? `?${params.toString()}` : "";
-		await readSseStream({
-			headers: await this.authHeaders(),
-			onActivity: options.onActivity,
-			onEvent: options.onEvent,
-			schema: appEventSchema,
-			signal: options.signal,
-			url: this.url(`/v1/events${suffix}`),
-		});
+		try {
+			await readSseStream({
+				headers: await this.authHeaders(),
+				onActivity: options.onActivity,
+				onEvent: options.onEvent,
+				schema: appEventSchema,
+				signal: options.signal,
+				url: this.url(`/v1/events${suffix}`),
+			});
+		} catch (error) {
+			if (error instanceof SseRequestError) {
+				if (error.status === 401) {
+					this.onUnauthorized?.();
+				}
+				throw new WebApiError(
+					error.detail ?? `SSE request failed with status ${error.status}.`,
+					error.status,
+				);
+			}
+
+			throw error;
+		}
 	}
 
 	private async requestJson<T>(
@@ -1116,6 +1130,7 @@ export class WebApiClient {
 		const token = await this.getToken();
 
 		if (!token) {
+			this.onUnauthorized?.();
 			throw new WebApiError("A bearer token is required.", 401);
 		}
 

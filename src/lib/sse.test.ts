@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import { installFetchMock } from "@unison/testkit/http";
 import { z } from "zod";
 
-import { emitSseBlocks, parseSseBlock, readSseStream } from "./sse";
+import { emitSseBlocks, parseSseBlock, readSseStream, SseRequestError } from "./sse";
 
 const eventSchema = z.object({
 	index: z.number(),
@@ -97,15 +97,24 @@ describe("SSE parsing", () => {
 		});
 
 		try {
-			await expect(
-				readSseStream({
+			let caught: unknown;
+			try {
+				await readSseStream({
 					onEvent: () => {
 						throw new Error("Unexpected SSE event.");
 					},
 					schema: eventSchema,
 					url: "http://example.test/events",
-				}),
-			).rejects.toThrow("SSE request failed with status 404: Agent session was not found.");
+				});
+			} catch (error) {
+				caught = error;
+			}
+
+			expect(caught).toBeInstanceOf(SseRequestError);
+			expect(caught).toHaveProperty(
+				"message",
+				"SSE request failed with status 404: Agent session was not found.",
+			);
 		} finally {
 			fetchMock.restore();
 		}

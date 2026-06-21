@@ -5,6 +5,7 @@ import type { Connection, ConnectionConnectResponse } from "@unison/contracts";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { connectErrorMessage } from "@/features/connections/connect-error";
+import { WebApiError } from "@/lib/api";
 import { useApi } from "@/lib/api-context";
 import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
 import { Avatar, AvatarFallback, AvatarImage } from "@/ui/avatar";
@@ -31,6 +32,35 @@ export function isGoogleConnected(connections: Connection[] | undefined): boolea
 
 const cardButtonClass =
 	"flex h-11 w-full items-center justify-center gap-3 rounded-md border border-(--border) bg-surface font-medium text-ink text-sm transition-colors hover:bg-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) disabled:opacity-50";
+
+function connectionGateErrorTitle(error: unknown): string {
+	if (error instanceof WebApiError) {
+		if (error.status === 401) {
+			return "Your session expired";
+		}
+		if (error.status === 429) {
+			return "Unison is catching up";
+		}
+		if (error.status >= 500) {
+			return "Unison is having trouble";
+		}
+	}
+
+	return "We couldn’t load your connections";
+}
+
+function connectionGateErrorDescription(error: unknown): string {
+	if (error instanceof WebApiError) {
+		if (error.status === 401) {
+			return "Sign in again to continue.";
+		}
+		if (error.status === 429) {
+			return "Too many requests are in flight. Wait a moment, then try again.";
+		}
+	}
+
+	return "This checks your connection status before opening the app.";
+}
 
 function Spinner() {
 	return (
@@ -64,7 +94,7 @@ export function GoogleConnectGate({ children }: { children: ReactNode }) {
 		});
 	}, []);
 
-	const { data, isLoading, isError, refetch } = useQuery({
+	const { data, error, isLoading, isError, refetch } = useQuery({
 		queryFn: () => api.listConnections(),
 		queryKey: CONNECTIONS_KEY,
 		staleTime: 30_000,
@@ -206,16 +236,16 @@ export function GoogleConnectGate({ children }: { children: ReactNode }) {
 			<div className="flex flex-col gap-1.5 text-center">
 				<h1 className="type-h6 text-ink">
 					{isError
-						? "We couldn’t verify your account"
+						? connectionGateErrorTitle(error)
 						: needsReconnect
 							? "Reconnect Google to continue"
 							: "Connect your Google Workspace"}
 				</h1>
-				{!isError ? (
-					<p className="type-small text-ink-subtle">
-						Unison works inside your Gmail, Calendar &amp; Drive. Grant access to finish setup.
-					</p>
-				) : null}
+				<p className="type-small text-ink-subtle">
+					{isError
+						? connectionGateErrorDescription(error)
+						: "Unison works inside your Gmail, Calendar & Drive. Grant access to finish setup."}
+				</p>
 			</div>
 
 			{isLoading ? (
